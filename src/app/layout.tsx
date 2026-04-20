@@ -1,11 +1,10 @@
 import './globals.css'
 import { LangProvider } from '@/lib/i18n/LangProvider'
-import { Metadata } from 'next'
+import { Metadata, Viewport } from 'next'
 
 export const metadata: Metadata = {
   title: 'Karaoku — Sing, Party, Win',
   description: 'Your phone is the microphone. Turn any room into a karaoke party.',
-  themeColor: '#E60012',
   openGraph: {
     title: 'Karaoku — Your phone is the microphone',
     description: 'Turn any room into a karaoke party. Queue songs from YouTube, sing through your phone.',
@@ -13,10 +12,11 @@ export const metadata: Metadata = {
   },
 }
 
-export const viewport = {
+export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  themeColor: '#E60012',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
