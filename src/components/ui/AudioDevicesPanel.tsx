@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { s } from '@/types'
+import { MicManager, detectDeviceType } from '@/lib/mic'
 
 interface AudioDevice {
   deviceId: string
@@ -13,7 +14,9 @@ export default function AudioDevicesPanel() {
   const [mics, setMics] = useState<AudioDevice[]>([])
   const [speakers, setSpeakers] = useState<AudioDevice[]>([])
   const [selectedMicId, setSelectedMicId] = useState<string>('')
-  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState<string>('')
+  const [micDropdown, setMicDropdown] = useState(false)
+  const [spkDropdown, setSpkDropdown] = useState(false)
   const [permissionGranted, setPermissionGranted] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -21,6 +24,7 @@ export default function AudioDevicesPanel() {
   const [recordCountdown, setRecordCountdown] = useState(0)
   const [micLevel, setMicLevel] = useState(0)
   const [toast, setToast] = useState('')
+  const [showGuide, setShowGuide] = useState(false)
 
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -30,14 +34,17 @@ export default function AudioDevicesPanel() {
   const recordedChunksRef = useRef<Blob[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Load devices + saved preference
+  const supportsSpeakerSelection = MicManager.isOutputSelectionSupported()
+
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('karaoku_mic_id') : null
-    if (saved) setSelectedMicId(saved)
+    if (typeof window === 'undefined') return
+    const savedMic = localStorage.getItem('karaoku_mic_id')
+    const savedSpk = localStorage.getItem('karaoku_speaker_id')
+    if (savedMic) setSelectedMicId(savedMic)
+    if (savedSpk) setSelectedSpeakerId(savedSpk)
     loadDevices()
 
-    // Listen to device changes (user pairs/unpairs BT)
-    if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+    if (navigator.mediaDevices) {
       const handler = () => loadDevices()
       navigator.mediaDevices.addEventListener('devicechange', handler)
       return () => {
@@ -69,36 +76,30 @@ export default function AudioDevicesPanel() {
       setRefreshing(true)
       const devices = await navigator.mediaDevices.enumerateDevices()
 
-      const inputs = devices
-        .filter((d) => d.kind === 'audioinput')
-        .map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || 'Microphone (permission needed)',
-          kind: 'audioinput' as const,
-        }))
+      const inputs = devices.filter((d) => d.kind === 'audioinput').map((d) => ({
+        deviceId: d.deviceId,
+        label: d.label || 'Microphone (grant permission)',
+        kind: 'audioinput' as const,
+      }))
 
-      const outputs = devices
-        .filter((d) => d.kind === 'audiooutput')
-        .map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || 'Speaker',
-          kind: 'audiooutput' as const,
-        }))
+      const outputs = devices.filter((d) => d.kind === 'audiooutput').map((d) => ({
+        deviceId: d.deviceId,
+        label: d.label || 'Speaker',
+        kind: 'audiooutput' as const,
+      }))
 
-      // Deduplicate by label (sometimes browsers list same device multiple times)
-      const seen = new Set()
-      const uniqueInputs = inputs.filter((d) => {
-        if (seen.has(d.label)) return false
-        seen.add(d.label)
-        return true
-      })
+      // Dedupe by label
+      const seenIn = new Set<string>(), seenOut = new Set<string>()
+      const uniqIn = inputs.filter((d) => { if (seenIn.has(d.label)) return false; seenIn.add(d.label); return true })
+      const uniqOut = outputs.filter((d) => { if (seenOut.has(d.label)) return false; seenOut.add(d.label); return true })
 
-      setMics(uniqueInputs)
-      setSpeakers(outputs)
-      setPermissionGranted(uniqueInputs.length > 0 && uniqueInputs[0].label !== 'Microphone (permission needed)')
+      setMics(uniqIn)
+      setSpeakers(uniqOut)
+      setPermissionGranted(uniqIn.length > 0 && uniqIn[0].label !== 'Microphone (grant permission)')
 
-      if (!selectedMicId && uniqueInputs.length > 0) {
-        setSelectedMicId(uniqueInputs[0].deviceId)
+      if (!selectedMicId && uniqIn.length > 0) setSelectedMicId(uniqIn[0].deviceId)
+      if (supportsSpeakerSelection && !selectedSpeakerId && uniqOut.length > 0) {
+        setSelectedSpeakerId(uniqOut[0].deviceId)
       }
     } catch (err) {
       console.error('[devices]', err)
@@ -113,7 +114,7 @@ export default function AudioDevicesPanel() {
       stream.getTracks().forEach((t) => t.stop())
       await loadDevices()
       showToast('Microphone permission granted ✓')
-    } catch (err) {
+    } catch {
       showToast('Permission denied. Enable in browser settings.')
     }
   }
@@ -121,19 +122,23 @@ export default function AudioDevicesPanel() {
   const pickMic = (deviceId: string) => {
     setSelectedMicId(deviceId)
     localStorage.setItem('karaoku_mic_id', deviceId)
-    setDropdownOpen(false)
+    setMicDropdown(false)
     const mic = mics.find((m) => m.deviceId === deviceId)
-    if (mic) showToast(`Switched to: ${friendlyLabel(mic.label)}`)
+    if (mic) showToast(`Mic: ${friendlyLabel(mic.label)}`)
+  }
+
+  const pickSpeaker = (deviceId: string) => {
+    setSelectedSpeakerId(deviceId)
+    localStorage.setItem('karaoku_speaker_id', deviceId)
+    setSpkDropdown(false)
+    const spk = speakers.find((m) => m.deviceId === deviceId)
+    if (spk) showToast(`Speaker: ${friendlyLabel(spk.label)}`)
   }
 
   const handleRefresh = async () => {
-    setRefreshing(true)
-    if (!permissionGranted) {
-      await requestPermission()
-    } else {
-      await loadDevices()
-      showToast('Devices refreshed')
-    }
+    if (!permissionGranted) { await requestPermission(); return }
+    await loadDevices()
+    showToast('Devices refreshed')
   }
 
   const startTest = async () => {
@@ -143,7 +148,6 @@ export default function AudioDevicesPanel() {
     recordedChunksRef.current = []
 
     try {
-      // Get the stream for selected device
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: { exact: selectedMicId },
@@ -153,7 +157,6 @@ export default function AudioDevicesPanel() {
       })
       mediaStreamRef.current = stream
 
-      // Setup analyser for waveform
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
       const source = audioCtx.createMediaStreamSource(stream)
       const analyser = audioCtx.createAnalyser()
@@ -171,12 +174,9 @@ export default function AudioDevicesPanel() {
       }
       updateLevel()
 
-      // Setup MediaRecorder
       const recorder = new MediaRecorder(stream)
       mediaRecorderRef.current = recorder
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunksRef.current.push(e.data)
-      }
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
       recorder.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' })
         setRecordedBlob(blob)
@@ -186,15 +186,10 @@ export default function AudioDevicesPanel() {
       }
       recorder.start()
 
-      // Countdown 3 seconds
       setRecordCountdown(3)
       const interval = setInterval(() => {
         setRecordCountdown((c) => {
-          if (c <= 1) {
-            clearInterval(interval)
-            if (recorder.state === 'recording') recorder.stop()
-            return 0
-          }
+          if (c <= 1) { clearInterval(interval); if (recorder.state === 'recording') recorder.stop(); return 0 }
           return c - 1
         })
       }, 1000)
@@ -213,27 +208,16 @@ export default function AudioDevicesPanel() {
     }
   }
 
-  // Helper: friendly label
   const friendlyLabel = (label: string) => {
     if (!label) return 'Unknown'
-    // Strip trailing hex IDs that browsers add
     return label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim()
-  }
-
-  const detectType = (label: string) => {
-    const l = label.toLowerCase()
-    if (l.includes('bluetooth') || l.includes('airpod') || l.includes('boya') || l.includes('rode')) return 'bluetooth'
-    if (l.includes('usb')) return 'usb'
-    if (l.includes('headset') || l.includes('earphone') || l.includes('earbud')) return 'headset'
-    if (l.includes('default')) return 'default'
-    return 'builtin'
   }
 
   const typeIcon = (type: string) => {
     switch (type) {
       case 'bluetooth': return '🎙️'
       case 'usb': return '🔌'
-      case 'headset': return '🎧'
+      case 'wired': return '🎧'
       default: return '📱'
     }
   }
@@ -242,27 +226,29 @@ export default function AudioDevicesPanel() {
     switch (type) {
       case 'bluetooth': return 'Bluetooth'
       case 'usb': return 'USB'
-      case 'headset': return 'Headset'
+      case 'wired': return 'Wired'
+      case 'default': return 'Default'
       default: return 'Built-in'
     }
   }
 
   const selectedMic = mics.find((m) => m.deviceId === selectedMicId)
-  const selectedLabel = selectedMic ? friendlyLabel(selectedMic.label) : 'No mic selected'
-  const selectedType = selectedMic ? detectType(selectedMic.label) : 'default'
+  const selectedMicLabel = selectedMic ? friendlyLabel(selectedMic.label) : 'No mic selected'
+  const selectedMicType = selectedMic ? detectDeviceType(selectedMic.label) : 'default'
+
+  const selectedSpk = speakers.find((m) => m.deviceId === selectedSpeakerId)
+  const selectedSpkLabel = selectedSpk ? friendlyLabel(selectedSpk.label) : 'Phone output (OS default)'
+  const selectedSpkType = selectedSpk ? detectDeviceType(selectedSpk.label) : 'default'
+
+  // Detect risky combo: phone mic + phone speaker = feedback risk
+  const feedbackRisk =
+    (selectedMicType === 'builtin' || selectedMicType === 'default') &&
+    (selectedSpkType === 'builtin' || selectedSpkType === 'default')
 
   return (
     <div style={{ background: s.dark, borderRadius: 12, padding: 14, position: 'relative' }}>
-      {/* MICROPHONE */}
-      <div
-        style={{
-          fontSize: 10,
-          color: s.redLight,
-          letterSpacing: 1.5,
-          fontWeight: 700,
-          marginBottom: 8,
-        }}
-      >
+      {/* MIC */}
+      <div style={{ fontSize: 10, color: s.redLight, letterSpacing: 1.5, fontWeight: 700, marginBottom: 8 }}>
         🎤 MICROPHONE
       </div>
 
@@ -274,17 +260,9 @@ export default function AudioDevicesPanel() {
           <button
             onClick={requestPermission}
             style={{
-              background: s.red,
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              padding: '8px 16px',
-              fontSize: 11,
-              fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: `0 3px 0 ${s.redDark}`,
-              letterSpacing: 0.5,
-              fontFamily: 'inherit',
+              background: s.red, color: 'white', border: 'none', borderRadius: 8,
+              padding: '8px 16px', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+              boxShadow: `0 3px 0 ${s.redDark}`, letterSpacing: 0.5, fontFamily: 'inherit',
             }}
           >
             ⚡ GRANT PERMISSION
@@ -293,91 +271,47 @@ export default function AudioDevicesPanel() {
       ) : (
         <>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {/* Dropdown button */}
             <div style={{ flex: 1, position: 'relative' }}>
               <div
-                onClick={() => !testing && setDropdownOpen(!dropdownOpen)}
+                onClick={() => !testing && setMicDropdown(!micDropdown)}
                 style={{
-                  background: '#0a0a0a',
-                  border: `1px solid ${dropdownOpen ? s.red : '#333'}`,
-                  borderRadius: 8,
-                  padding: '10px 12px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  cursor: testing ? 'not-allowed' : 'pointer',
-                  opacity: testing ? 0.5 : 1,
+                  background: '#0a0a0a', border: `1px solid ${micDropdown ? s.red : '#333'}`,
+                  borderRadius: 8, padding: '10px 12px', display: 'flex',
+                  justifyContent: 'space-between', alignItems: 'center',
+                  cursor: testing ? 'not-allowed' : 'pointer', opacity: testing ? 0.5 : 1,
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      background: '#4ade80',
-                      borderRadius: '50%',
-                      flexShrink: 0,
-                    }}
-                  />
+                  <span style={{ width: 6, height: 6, background: '#4ade80', borderRadius: '50%', flexShrink: 0 }} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {selectedLabel}
+                    <div style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {selectedMicLabel}
                     </div>
                     <div style={{ fontSize: 9, color: '#888' }}>
-                      {typeName(selectedType)} · {mics.length} available
+                      {typeName(selectedMicType)} · {mics.length} available
                     </div>
                   </div>
                 </div>
-                <span style={{ color: '#888', fontSize: 10, flexShrink: 0 }}>
-                  {dropdownOpen ? '▲' : '▼'}
-                </span>
+                <span style={{ color: '#888', fontSize: 10, flexShrink: 0 }}>{micDropdown ? '▲' : '▼'}</span>
               </div>
 
-              {/* Dropdown options */}
-              {dropdownOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 4px)',
-                    left: 0,
-                    right: 0,
-                    background: '#0a0a0a',
-                    border: `1px solid ${s.red}`,
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                    zIndex: 20,
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-                  }}
-                >
+              {micDropdown && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+                  background: '#0a0a0a', border: `1px solid ${s.red}`, borderRadius: 8,
+                  overflow: 'hidden', zIndex: 20, boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                }}>
                   {mics.map((mic) => {
-                    const type = detectType(mic.label)
+                    const type = detectDeviceType(mic.label)
                     const active = mic.deviceId === selectedMicId
                     return (
                       <div
                         key={mic.deviceId}
                         onClick={() => pickMic(mic.deviceId)}
                         style={{
-                          padding: '10px 12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          cursor: 'pointer',
-                          background: active ? 'rgba(230,0,18,0.12)' : 'transparent',
+                          padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8,
+                          cursor: 'pointer', background: active ? 'rgba(230,0,18,0.12)' : 'transparent',
                           borderBottom: '1px solid #1a1a1a',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!active) e.currentTarget.style.background = '#1a1a1a'
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!active) e.currentTarget.style.background = 'transparent'
                         }}
                       >
                         <span style={{ fontSize: 12 }}>{typeIcon(type)}</span>
@@ -387,21 +321,15 @@ export default function AudioDevicesPanel() {
                           </div>
                           <div style={{ fontSize: 9, color: '#666' }}>{typeName(type)}</div>
                         </div>
-                        {active && (
-                          <span style={{ color: '#4ade80', fontSize: 10 }}>●</span>
-                        )}
+                        {active && <span style={{ color: '#4ade80', fontSize: 10 }}>●</span>}
                       </div>
                     )
                   })}
                   <div
                     onClick={handleRefresh}
                     style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255,255,255,0.02)',
-                      fontSize: 10,
-                      color: '#aaa',
-                      textAlign: 'center',
-                      cursor: 'pointer',
+                      padding: '8px 12px', background: 'rgba(255,255,255,0.02)',
+                      fontSize: 10, color: '#aaa', textAlign: 'center', cursor: 'pointer',
                     }}
                   >
                     🔄 Refresh · Pair new in phone Settings
@@ -410,102 +338,53 @@ export default function AudioDevicesPanel() {
               )}
             </div>
 
-            {/* Test button */}
             <button
               onClick={startTest}
               disabled={testing || !selectedMicId}
               style={{
-                background: testing ? '#666' : s.red,
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                padding: '0 14px',
-                fontSize: 10,
-                fontWeight: 800,
+                background: testing ? '#666' : s.red, color: 'white', border: 'none',
+                borderRadius: 8, padding: '0 14px', fontSize: 10, fontWeight: 800,
                 cursor: testing ? 'not-allowed' : 'pointer',
                 boxShadow: `0 3px 0 ${testing ? '#444' : s.redDark}`,
-                letterSpacing: 0.5,
-                fontFamily: 'inherit',
-                minWidth: 70,
+                letterSpacing: 0.5, fontFamily: 'inherit', minWidth: 70,
               }}
             >
               {testing ? `${recordCountdown}s` : 'TEST'}
             </button>
           </div>
 
-          {/* Mic level meter (shown during test) */}
           {testing && (
-            <div
-              style={{
-                background: '#0a0a0a',
-                borderRadius: 6,
-                padding: 10,
-                marginBottom: 10,
-                border: `1px solid ${s.red}`,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 9,
-                  color: s.redLight,
-                  letterSpacing: 1,
-                  marginBottom: 6,
-                  fontWeight: 700,
-                }}
-              >
+            <div style={{
+              background: '#0a0a0a', borderRadius: 6, padding: 10, marginBottom: 10,
+              border: `1px solid ${s.red}`,
+            }}>
+              <div style={{ fontSize: 9, color: s.redLight, letterSpacing: 1, marginBottom: 6, fontWeight: 700 }}>
                 ● RECORDING — SPEAK NOW
               </div>
-              <div
-                style={{
-                  height: 8,
-                  background: '#1a1a1a',
-                  borderRadius: 100,
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${micLevel}%`,
-                    background: `linear-gradient(90deg, ${s.red}, #ff9f43)`,
-                    transition: 'width 0.05s',
-                    borderRadius: 100,
-                  }}
-                />
+              <div style={{ height: 8, background: '#1a1a1a', borderRadius: 100, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${micLevel}%`,
+                  background: `linear-gradient(90deg, ${s.red}, #ff9f43)`,
+                  transition: 'width 0.05s', borderRadius: 100,
+                }} />
               </div>
             </div>
           )}
 
-          {/* Playback recorded */}
           {recordedBlob && !testing && (
-            <div
-              style={{
-                background: 'rgba(74, 222, 128, 0.08)',
-                border: '1px solid rgba(74, 222, 128, 0.3)',
-                borderRadius: 8,
-                padding: 10,
-                marginBottom: 10,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
+            <div style={{
+              background: 'rgba(74, 222, 128, 0.08)', border: '1px solid rgba(74, 222, 128, 0.3)',
+              borderRadius: 8, padding: 10, marginBottom: 10,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+            }}>
               <div style={{ fontSize: 11, color: '#86efac' }}>
-                ✓ Recording ready. Play it back to check your mic.
+                ✓ Recording ready. Play to check mic.
               </div>
               <button
                 onClick={playback}
                 style={{
-                  background: '#4ade80',
-                  color: '#0a0a0a',
-                  border: 'none',
-                  borderRadius: 6,
-                  padding: '5px 10px',
-                  fontSize: 10,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
+                  background: '#4ade80', color: '#0a0a0a', border: 'none', borderRadius: 6,
+                  padding: '5px 10px', fontSize: 10, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
                 }}
               >
                 ▶ PLAY
@@ -516,74 +395,167 @@ export default function AudioDevicesPanel() {
         </>
       )}
 
-      {/* SPEAKER INFO */}
-      <div
-        style={{
-          fontSize: 10,
-          color: s.redLight,
-          letterSpacing: 1.5,
-          fontWeight: 700,
-          marginTop: 12,
-          marginBottom: 8,
-        }}
-      >
+      {/* SPEAKER */}
+      <div style={{ fontSize: 10, color: s.redLight, letterSpacing: 1.5, fontWeight: 700, marginTop: 12, marginBottom: 8 }}>
         🔊 SPEAKER
       </div>
-      <div
-        style={{
-          background: '#0a0a0a',
-          border: `1px solid #333`,
-          borderRadius: 8,
-          padding: '10px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}
-      >
-        <span style={{ fontSize: 14 }}>📱</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 700 }}>Phone output (follows OS)</div>
-          <div style={{ fontSize: 9, color: '#888' }}>
-            Pair Bluetooth speaker in phone Settings
+
+      {supportsSpeakerSelection && speakers.length > 0 ? (
+        // Desktop Chrome: show dropdown
+        <div style={{ position: 'relative', marginBottom: 10 }}>
+          <div
+            onClick={() => setSpkDropdown(!spkDropdown)}
+            style={{
+              background: '#0a0a0a', border: `1px solid ${spkDropdown ? s.red : '#333'}`,
+              borderRadius: 8, padding: '10px 12px', display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+              <span style={{ fontSize: 14 }}>{typeIcon(selectedSpkType)}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {selectedSpkLabel}
+                </div>
+                <div style={{ fontSize: 9, color: '#888' }}>
+                  {typeName(selectedSpkType)} · {speakers.length} available
+                </div>
+              </div>
+            </div>
+            <span style={{ color: '#888', fontSize: 10, flexShrink: 0 }}>{spkDropdown ? '▲' : '▼'}</span>
+          </div>
+
+          {spkDropdown && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+              background: '#0a0a0a', border: `1px solid ${s.red}`, borderRadius: 8,
+              overflow: 'hidden', zIndex: 20, boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+            }}>
+              {speakers.map((spk) => {
+                const type = detectDeviceType(spk.label)
+                const active = spk.deviceId === selectedSpeakerId
+                return (
+                  <div
+                    key={spk.deviceId}
+                    onClick={() => pickSpeaker(spk.deviceId)}
+                    style={{
+                      padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8,
+                      cursor: 'pointer', background: active ? 'rgba(230,0,18,0.12)' : 'transparent',
+                      borderBottom: '1px solid #1a1a1a',
+                    }}
+                  >
+                    <span style={{ fontSize: 12 }}>{typeIcon(type)}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: active ? 'white' : '#ccc' }}>
+                        {friendlyLabel(spk.label)}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#666' }}>{typeName(type)}</div>
+                    </div>
+                    {active && <span style={{ color: '#4ade80', fontSize: 10 }}>●</span>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        // Mobile or unsupported: show info
+        <div style={{
+          background: '#0a0a0a', border: `1px solid #333`, borderRadius: 8,
+          padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8,
+          marginBottom: 10,
+        }}>
+          <span style={{ fontSize: 14 }}>📱</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Phone output (follows OS)</div>
+            <div style={{ fontSize: 9, color: '#888' }}>
+              Pair speaker in phone Settings → Bluetooth
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* BOYA HELPER */}
-      <div
+      {/* Feedback warning */}
+      {feedbackRisk && permissionGranted && (
+        <div style={{
+          padding: '8px 10px', background: 'rgba(251, 191, 36, 0.12)',
+          border: '1px solid rgba(251, 191, 36, 0.3)', borderRadius: 7, marginBottom: 8,
+        }}>
+          <div style={{ fontSize: 9, color: '#fbbf24', fontWeight: 800, marginBottom: 3 }}>⚠️ FEEDBACK RISK</div>
+          <div style={{ fontSize: 10, color: '#fde68a', lineHeight: 1.5 }}>
+            Phone mic + phone speaker can cause echo/feedback loop. Pair Bluetooth speaker or use headphones.
+          </div>
+        </div>
+      )}
+
+      {/* Setup Guide toggle */}
+      <button
+        onClick={() => setShowGuide(!showGuide)}
         style={{
-          marginTop: 10,
-          padding: '8px 10px',
-          background: 'rgba(230,0,18,0.08)',
-          border: '1px solid rgba(230,0,18,0.2)',
-          borderRadius: 7,
+          width: '100%', background: 'transparent',
+          border: `1px solid ${s.gray}`, color: 'rgba(255,255,255,0.7)',
+          borderRadius: 7, padding: '8px 10px', fontSize: 11, cursor: 'pointer',
+          fontFamily: 'inherit', fontWeight: 600, textAlign: 'left',
+          marginTop: 4,
         }}
       >
-        <div style={{ fontSize: 9, color: '#ff9fa5', lineHeight: 1.5 }}>
-          <b style={{ color: s.redLight }}>💡 Can&apos;t see your BOYA?</b> Pair first
-          in phone Settings → Bluetooth, then tap ▼ dropdown → Refresh.
+        {showGuide ? '▼' : '▶'} 📖 Audio setup guide (best results)
+      </button>
+
+      {showGuide && (
+        <div style={{
+          marginTop: 8, padding: 12, background: 'rgba(0,0,0,0.3)',
+          borderRadius: 8, fontSize: 11, lineHeight: 1.7,
+        }}>
+          <div style={{ color: '#4ade80', fontWeight: 800, marginBottom: 6 }}>
+            ✅ BEST SETUP (no echo)
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.75)', marginBottom: 10 }}>
+            📱 Phone + Bluetooth speaker<br />
+            🎤 Wired mic (3.5mm or USB-C)<br />
+            → Turn ON Karaoke mode
+          </div>
+
+          <div style={{ color: '#fbbf24', fontWeight: 800, marginBottom: 6 }}>
+            🟡 OK SETUP
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.75)', marginBottom: 10 }}>
+            📱 Phone + BT speaker<br />
+            🎤 Phone built-in mic<br />
+            → Keep echo cancellation ON
+          </div>
+
+          <div style={{ color: '#ff6b6b', fontWeight: 800, marginBottom: 6 }}>
+            ❌ AVOID
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.75)', marginBottom: 10 }}>
+            🎤 BT mic + 📱 phone speaker<br />
+            → Feedback loop likely<br /><br />
+            🎤 BT mic + 🔊 BT speaker (different devices)<br />
+            → OS may not handle well
+          </div>
+
+          <div style={{ color: s.redLight, fontWeight: 800, marginBottom: 6 }}>
+            💡 PAIR BLUETOOTH SPEAKER
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.75)' }}>
+            1. Phone Settings → Bluetooth<br />
+            2. Connect speaker<br />
+            3. ALL audio auto-routes there<br />
+            4. App follows phone default
+          </div>
         </div>
-      </div>
+      )}
 
       {toast && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: -48,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: s.dark,
-            border: `1px solid ${s.red}`,
-            color: 'white',
-            padding: '8px 14px',
-            borderRadius: 100,
-            fontSize: 11,
-            fontWeight: 600,
-            whiteSpace: 'nowrap',
-            zIndex: 50,
-            boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
-          }}
-        >
+        <div style={{
+          position: 'absolute', bottom: -48, left: '50%',
+          transform: 'translateX(-50%)', background: s.dark,
+          border: `1px solid ${s.red}`, color: 'white',
+          padding: '8px 14px', borderRadius: 100, fontSize: 11,
+          fontWeight: 600, whiteSpace: 'nowrap', zIndex: 50,
+          boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
+        }}>
           {toast}
         </div>
       )}
