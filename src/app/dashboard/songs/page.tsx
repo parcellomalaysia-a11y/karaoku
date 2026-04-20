@@ -7,6 +7,16 @@ import { supabase } from '@/lib/supabase/client'
 import { s, Favorite, Party } from '@/types'
 import { KARAOKE_LIBRARY, KaraokeSong } from '@/lib/karaoke-library'
 
+const FREE_PLAYED_LIMIT = 3
+const FREE_MIC_SECONDS = 600
+
+// Party with additional metadata for lock check
+interface PartyWithStats extends Party {
+  playedCount: number
+  isLocked: boolean
+  lockReason?: string
+}
+
 export default function SongsPage() {
   const { t } = useLang()
   const [favs, setFavs] = useState<Favorite[]>([])
@@ -15,7 +25,8 @@ export default function SongsPage() {
   const [searching, setSearching] = useState(false)
   const [useApi, setUseApi] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [parties, setParties] = useState<Party[]>([])
+  const [parties, setParties] = useState<PartyWithStats[]>([])
+  const [hostPlan, setHostPlan] = useState<string>('free')
   const [userId, setUserId] = useState<string>('')
   const [openPartyFor, setOpenPartyFor] = useState<string | null>(null)
   const [preview, setPreview] = useState<KaraokeSong | null>(null)
@@ -27,12 +38,45 @@ export default function SongsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setUserId(user.id)
-      const [{ data: favData }, { data: partyData }] = await Promise.all([
+
+      const [{ data: favData }, { data: partyData }, { data: profileData }] = await Promise.all([
         supabase.from('favorites').select('*').eq('user_id', user.id).order('added_at', { ascending: false }),
         supabase.from('parties').select('*').eq('host_id', user.id).eq('is_active', true).order('created_at', { ascending: false }),
+        supabase.from('profiles').select('plan').eq('id', user.id).single(),
       ])
+
       setFavs(favData || [])
-      setParties(partyData || [])
+      const plan = profileData?.plan || 'free'
+      setHostPlan(plan)
+
+      // For free hosts, compute lock status for each party
+      const partiesWithStats: PartyWithStats[] = []
+      for (const p of partyData || []) {
+        const { count: playedC } = await supabase
+          .from('queue_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('party_id', p.id)
+          .eq('played', true)
+
+        const micUsed = p.mic_seconds_used || 0
+        const songLimit = plan === 'free' && (playedC || 0) >= FREE_PLAYED_LIMIT
+        const micLimit = plan === 'free' && micUsed >= FREE_MIC_SECONDS
+        const locked = songLimit || micLimit
+
+        let reason: string | undefined
+        if (songLimit && micLimit) reason = '3 songs & 10 min mic used'
+        else if (songLimit) reason = '3 songs played'
+        else if (micLimit) reason = '10 min mic used'
+
+        partiesWithStats.push({
+          ...p,
+          playedCount: playedC || 0,
+          isLocked: locked,
+          lockReason: reason,
+        })
+      }
+
+      setParties(partiesWithStats)
       setLoading(false)
     }
     load()
@@ -104,11 +148,26 @@ export default function SongsPage() {
   const addToParty = async (song: KaraokeSong, partyId: string) => {
     const p = parties.find(x => x.id === partyId)
     if (!p) return
-    const { count } = await supabase
+
+    // Safety check: don't allow adding to locked party
+    if (p.isLocked) {
+      showToast(`🔒 ${p.name} is locked (${p.lockReason})`)
+      setOpenPartyFor(null)
+      return
+    }
+
+    // Also check queue limit inline
+    const { count: activeCount } = await supabase
       .from('queue_items')
       .select('id', { count: 'exact', head: true })
       .eq('party_id', partyId)
       .eq('played', false)
+
+    if (hostPlan === 'free' && (p.playedCount + (activeCount || 0)) >= FREE_PLAYED_LIMIT) {
+      showToast(`🔒 ${p.name} queue full (free limit)`)
+      setOpenPartyFor(null)
+      return
+    }
 
     await supabase.from('queue_items').insert({
       party_id: partyId,
@@ -118,7 +177,7 @@ export default function SongsPage() {
       thumb_url: song.thumb,
       added_by_name: 'Host',
       added_by_id: userId,
-      position: count || 0,
+      position: activeCount || 0,
     })
     setOpenPartyFor(null)
     showToast(`Added to "${p.name}" ✓`)
@@ -132,8 +191,12 @@ export default function SongsPage() {
     thumb: f.thumb_url || '',
   })
 
+  const activeParties = parties.filter(p => !p.isLocked)
+  const lockedParties = parties.filter(p => p.isLocked)
+
   const SongRow = ({ song }: { song: KaraokeSong }) => {
     const favd = isFavorited(song.id)
+    const hasActiveParty = activeParties.length > 0
     return (
       <div
         style={{
@@ -182,22 +245,29 @@ export default function SongsPage() {
         {parties.length > 0 && (
           <div style={{ position: 'relative' }}>
             <button
-              onClick={() => setOpenPartyFor(openPartyFor === song.id ? null : song.id)}
+              onClick={() => {
+                if (!hasActiveParty && lockedParties.length > 0) {
+                  showToast('All your parties are locked. Upgrade for unlimited!')
+                  return
+                }
+                setOpenPartyFor(openPartyFor === song.id ? null : song.id)
+              }}
+              disabled={!hasActiveParty && lockedParties.length > 0}
               style={{
-                background: s.red,
+                background: !hasActiveParty && lockedParties.length > 0 ? '#444' : s.red,
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
                 padding: '5px 10px',
                 fontSize: 11,
                 fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: `0 3px 0 ${s.redDark}`,
+                cursor: !hasActiveParty && lockedParties.length > 0 ? 'not-allowed' : 'pointer',
+                boxShadow: !hasActiveParty && lockedParties.length > 0 ? 'none' : `0 3px 0 ${s.redDark}`,
               }}
             >
-              + Add
+              {!hasActiveParty && lockedParties.length > 0 ? '🔒' : '+ Add'}
             </button>
-            {openPartyFor === song.id && (
+            {openPartyFor === song.id && hasActiveParty && (
               <div
                 style={{
                   position: 'absolute',
@@ -208,12 +278,12 @@ export default function SongsPage() {
                   borderRadius: 10,
                   padding: 6,
                   zIndex: 10,
-                  minWidth: 180,
+                  minWidth: 200,
                   boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
                 }}
               >
                 <div style={{ fontSize: 10, color: '#999', padding: '4px 8px', letterSpacing: 1 }}>ADD TO PARTY</div>
-                {parties.map(p => (
+                {activeParties.map(p => (
                   <button
                     key={p.id}
                     onClick={() => addToParty(song, p.id)}
@@ -231,9 +301,32 @@ export default function SongsPage() {
                     }}
                   >
                     <div style={{ fontWeight: 700 }}>{p.name}</div>
-                    <div style={{ fontSize: 10, color: '#999' }}>{p.code}</div>
+                    <div style={{ fontSize: 10, color: '#999' }}>
+                      {p.code} · {hostPlan === 'free' ? `${p.playedCount}/${FREE_PLAYED_LIMIT} songs` : 'unlimited'}
+                    </div>
                   </button>
                 ))}
+                {lockedParties.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 9, color: '#666', padding: '6px 8px 2px', letterSpacing: 1, borderTop: `1px solid ${s.gray}`, marginTop: 4 }}>
+                      LOCKED
+                    </div>
+                    {lockedParties.map(p => (
+                      <div
+                        key={p.id}
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: 11,
+                          color: '#666',
+                          cursor: 'not-allowed',
+                        }}
+                      >
+                        🔒 {p.name}
+                        <div style={{ fontSize: 9, color: '#555' }}>{p.lockReason}</div>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>

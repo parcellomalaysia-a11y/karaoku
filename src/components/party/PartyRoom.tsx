@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import Logo from '@/components/ui/Logo'
 import Button from '@/components/ui/Button'
 import LangToggle from '@/components/ui/LangToggle'
 import UpgradeButton from '@/components/ui/UpgradeButton'
 import UpgradeModal from '@/components/ui/UpgradeModal'
 import YTPlayer from './YTPlayer'
-import MicPanel from './MicPanel'
+import MicPanel, { FREE_MIC_SECONDS } from './MicPanel'
 import AddSongModal from './AddSongModal'
 import QRModal from './QRModal'
 import { useLang } from '@/lib/i18n/LangProvider'
@@ -29,6 +28,7 @@ export default function PartyRoom({ code }: { code: string }) {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [current, setCurrent] = useState<QueueItem | null>(null)
   const [playedCount, setPlayedCount] = useState(0)
+  const [micSecondsUsed, setMicSecondsUsed] = useState(0)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
@@ -37,18 +37,21 @@ export default function PartyRoom({ code }: { code: string }) {
   const [showUpgrade, setShowUpgrade] = useState(false)
 
   const [playing, setPlaying] = useState(true)
-  const [songsUsed, setSongsUsed] = useState(0)
-  const micSongStartedRef = useRef(false)
 
   const currentPlan = profile?.plan || 'free'
   const planLimits = PLANS[currentPlan]
   const canParty = planLimits.party
 
+  // LOCK LOGIC — EITHER 3 songs played OR 10 min mic used → lock
   const isHostFree = hostPlan === 'free'
-  const partyEnded = isHostFree && playedCount >= FREE_PLAYED_LIMIT
+  const songLimitHit = isHostFree && playedCount >= FREE_PLAYED_LIMIT
+  const micLimitHit = isHostFree && micSecondsUsed >= FREE_MIC_SECONDS
+  const partyLocked = songLimitHit || micLimitHit
+
   const queueFullForPlan = isHostFree
     ? (queue.length + (current ? 1 : 0) + playedCount) >= FREE_PLAYED_LIMIT
     : false
+  const disableAdd = partyLocked || queueFullForPlan
 
   useEffect(() => {
     let mounted = true
@@ -73,6 +76,7 @@ export default function PartyRoom({ code }: { code: string }) {
 
       setParty(partyData)
       setProfile(profileData)
+      setMicSecondsUsed(partyData.mic_seconds_used || 0)
 
       const { data: hostProfile } = await supabase
         .from('profiles')
@@ -147,12 +151,21 @@ export default function PartyRoom({ code }: { code: string }) {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'parties', filter: `id=eq.${party.id}` },
+        (payload: any) => {
+          if (payload.new.mic_seconds_used !== undefined) {
+            setMicSecondsUsed(payload.new.mic_seconds_used)
+          }
+        }
+      )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [party])
 
   const addSong = async (song: KaraokeSong) => {
-    if (!party) return
+    if (!party || disableAdd) return
     const position = (current ? 1 : 0) + queue.length
     await supabase.from('queue_items').insert({
       party_id: party.id,
@@ -180,11 +193,6 @@ export default function PartyRoom({ code }: { code: string }) {
         artist: current.artist,
         thumb_url: current.thumb_url,
       })
-    }
-
-    if (micSongStartedRef.current) {
-      setSongsUsed((n) => n + 1)
-      micSongStartedRef.current = false
     }
   }, [current, party, profile])
 
@@ -228,6 +236,16 @@ export default function PartyRoom({ code }: { code: string }) {
   const planLabel = lang === 'bm' && 'labelBm' in PLANS[currentPlan]
     ? (PLANS[currentPlan] as any).labelBm
     : PLANS[currentPlan].label
+
+  // Lock reason messaging
+  let lockReason: string | null = null
+  if (songLimitHit && micLimitHit) {
+    lockReason = '🔒 Party ended — 3 songs played AND 10 min mic used'
+  } else if (songLimitHit) {
+    lockReason = '🔒 Party ended — 3 songs played (free limit)'
+  } else if (micLimitHit) {
+    lockReason = '🔒 Party ended — 10 min mic time used (free limit)'
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: s.black, display: 'flex', flexDirection: 'column' }}>
@@ -276,7 +294,7 @@ export default function PartyRoom({ code }: { code: string }) {
         </div>
       </header>
 
-      {partyEnded && (
+      {lockReason && (
         <div
           style={{
             background: `linear-gradient(135deg, ${s.redDark}, ${s.red})`,
@@ -286,7 +304,7 @@ export default function PartyRoom({ code }: { code: string }) {
             fontWeight: 700,
           }}
         >
-          🔒 Free party limit reached (3 songs played).{' '}
+          {lockReason}.{' '}
           <span
             onClick={() => setShowUpgrade(true)}
             style={{ textDecoration: 'underline', color: 'white', cursor: 'pointer' }}
@@ -361,8 +379,12 @@ export default function PartyRoom({ code }: { code: string }) {
 
           <MicPanel
             plan={currentPlan}
-            freeLimit={PLANS.free.micSongs}
-            songsUsed={songsUsed}
+            hostPlan={hostPlan}
+            partyId={party?.id}
+            initialSecondsUsed={micSecondsUsed}
+            partyLocked={partyLocked}
+            onSecondsUpdate={setMicSecondsUsed}
+            onTimeLimitHit={() => setShowUpgrade(true)}
             onNeedUpgrade={() => setShowUpgrade(true)}
           />
         </div>
@@ -388,7 +410,7 @@ export default function PartyRoom({ code }: { code: string }) {
                 <div style={{ fontSize: 17, fontWeight: 800 }}>{t.songs_count(queue.length)}</div>
                 {isHostFree && (
                   <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
-                    {playedCount}/{FREE_PLAYED_LIMIT} songs used
+                    {playedCount}/{FREE_PLAYED_LIMIT} songs · {Math.floor(micSecondsUsed / 60)}:{(micSecondsUsed % 60).toString().padStart(2, '0')}/10:00 mic
                   </div>
                 )}
               </div>
@@ -396,7 +418,7 @@ export default function PartyRoom({ code }: { code: string }) {
                 variant="primary"
                 size="sm"
                 onClick={() => setShowAdd(true)}
-                disabled={partyEnded || queueFullForPlan}
+                disabled={disableAdd}
               >
                 + {t.add}
               </Button>
@@ -517,7 +539,7 @@ export default function PartyRoom({ code }: { code: string }) {
           onAdd={addSong}
           onClose={() => setShowAdd(false)}
           onUpgrade={() => { setShowAdd(false); setShowUpgrade(true) }}
-          atLimit={partyEnded || queueFullForPlan}
+          atLimit={disableAdd}
           queueLimit={isHostFree ? FREE_PLAYED_LIMIT : 999}
         />
       )}

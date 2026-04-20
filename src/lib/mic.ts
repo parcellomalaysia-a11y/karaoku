@@ -5,6 +5,7 @@
 //   - AudioContext with latencyHint: "interactive" (<50ms latency)
 //   - GainNode for volume control
 //   - AnalyserNode for live level visualization
+//   - Supports selecting specific mic device (Bluetooth, USB, etc)
 // ============================================================
 
 export class MicManager {
@@ -15,17 +16,40 @@ export class MicManager {
   private analyser: AnalyserNode | null = null
   public active = false
 
-  async start(opts: { echo?: boolean; noise?: boolean; autoGain?: boolean } = {}) {
+  async start(opts: { echo?: boolean; noise?: boolean; autoGain?: boolean; deviceId?: string } = {}) {
     if (this.active) return
-    const { echo = true, noise = true, autoGain = true } = opts
+    const { echo = true, noise = true, autoGain = true, deviceId } = opts
 
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: echo,
-        noiseSuppression: noise,
-        autoGainControl: autoGain,
-      },
-    })
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: echo,
+      noiseSuppression: noise,
+      autoGainControl: autoGain,
+    }
+
+    // Use specific device if requested (from Settings → Audio Devices)
+    if (deviceId) {
+      audioConstraints.deviceId = { exact: deviceId }
+    }
+
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      })
+    } catch (err: any) {
+      // If specific device failed (disconnected), fall back to default
+      if (err.name === 'OverconstrainedError' && deviceId) {
+        console.warn('[mic] specific device unavailable, using default')
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: echo,
+            noiseSuppression: noise,
+            autoGainControl: autoGain,
+          },
+        })
+      } else {
+        throw err
+      }
+    }
 
     this.ctx = new AudioContext({ latencyHint: 'interactive' })
     this.source = this.ctx.createMediaStreamSource(this.stream)
