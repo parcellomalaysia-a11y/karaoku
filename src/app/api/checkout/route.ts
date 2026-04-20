@@ -47,9 +47,13 @@ export async function POST(req: Request) {
 
     const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL
 
+    const isSubscription = plan === 'month' || plan === 'year'
+
     const session = await stripe.checkout.sessions.create({
-      mode: plan === 'month' || plan === 'year' ? 'subscription' : 'payment',
-      payment_method_types: ['card', 'fpx', 'grabpay'],
+      mode: isSubscription ? 'subscription' : 'payment',
+      // FPX & GrabPay only work for one-time payments (Day Pass).
+      // Subscriptions must use card only.
+      payment_method_types: isSubscription ? ['card'] : ['card', 'fpx', 'grabpay'],
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/dashboard?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancel`,
