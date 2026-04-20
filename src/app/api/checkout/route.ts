@@ -35,7 +35,6 @@ export async function POST(req: Request) {
         promo.used_count < promo.max_uses &&
         (!promo.expires_at || new Date(promo.expires_at) > new Date())
       ) {
-        // Create one-shot Stripe coupon
         const coupon = await stripe.coupons.create({
           percent_off: promo.discount_percent,
           duration: 'once',
@@ -47,13 +46,11 @@ export async function POST(req: Request) {
 
     const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL
 
-    const isSubscription = plan === 'month' || plan === 'year'
-
+    // All plans are now one-time payments.
+    // FPX + GrabPay work for all one-time modes.
     const session = await stripe.checkout.sessions.create({
-      mode: isSubscription ? 'subscription' : 'payment',
-      // FPX & GrabPay only work for one-time payments (Day Pass).
-      // Subscriptions must use card only.
-      payment_method_types: isSubscription ? ['card'] : ['card', 'fpx', 'grabpay'],
+      mode: 'payment',
+      payment_method_types: ['card', 'fpx', 'grabpay'],
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/dashboard?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancel`,
