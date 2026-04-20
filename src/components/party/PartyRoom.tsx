@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Logo from '@/components/ui/Logo'
 import Button from '@/components/ui/Button'
 import LangToggle from '@/components/ui/LangToggle'
@@ -14,14 +15,18 @@ import { supabase } from '@/lib/supabase/client'
 import { s, PLANS, Party, QueueItem, Profile } from '@/types'
 import { KaraokeSong } from '@/lib/karaoke-library'
 
+const FREE_PLAYED_LIMIT = 3
+
 export default function PartyRoom({ code }: { code: string }) {
   const { t, lang } = useLang()
   const router = useRouter()
 
   const [party, setParty] = useState<Party | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [hostPlan, setHostPlan] = useState<string>('free')
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [current, setCurrent] = useState<QueueItem | null>(null)
+  const [playedCount, setPlayedCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
@@ -36,9 +41,13 @@ export default function PartyRoom({ code }: { code: string }) {
   const currentPlan = profile?.plan || 'free'
   const planLimits = PLANS[currentPlan]
   const canParty = planLimits.party
-  const queueLimit = planLimits.queue
 
-  // ========== LOAD PARTY + PROFILE ==========
+  const isHostFree = hostPlan === 'free'
+  const partyEnded = isHostFree && playedCount >= FREE_PLAYED_LIMIT
+  const queueFullForPlan = isHostFree
+    ? (queue.length + (current ? 1 : 0) + playedCount) >= FREE_PLAYED_LIMIT
+    : false
+
   useEffect(() => {
     let mounted = true
     const load = async () => {
@@ -63,15 +72,29 @@ export default function PartyRoom({ code }: { code: string }) {
       setParty(partyData)
       setProfile(profileData)
 
-      // Load queue
-      const { data: queueData } = await supabase
-        .from('queue_items')
-        .select('*')
-        .eq('party_id', partyData.id)
-        .eq('played', false)
-        .order('position', { ascending: true })
+      const { data: hostProfile } = await supabase
+        .from('profiles')
+        .select('plan')
+        .eq('id', partyData.host_id)
+        .single()
+      setHostPlan(hostProfile?.plan || 'free')
 
-      const items = queueData || []
+      const [{ data: activeQueue }, { count: playedC }] = await Promise.all([
+        supabase
+          .from('queue_items')
+          .select('*')
+          .eq('party_id', partyData.id)
+          .eq('played', false)
+          .order('position', { ascending: true }),
+        supabase
+          .from('queue_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('party_id', partyData.id)
+          .eq('played', true),
+      ])
+
+      const items = activeQueue || []
+      setPlayedCount(playedC || 0)
       if (items.length > 0) {
         setCurrent(items[0])
         setQueue(items.slice(1))
@@ -85,7 +108,6 @@ export default function PartyRoom({ code }: { code: string }) {
     return () => { mounted = false }
   }, [code, router])
 
-  // ========== REALTIME QUEUE SYNC (Memoir pattern) ==========
   useEffect(() => {
     if (!party) return
     const channel = supabase
@@ -94,18 +116,25 @@ export default function PartyRoom({ code }: { code: string }) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'queue_items', filter: `party_id=eq.${party.id}` },
         async () => {
-          const { data } = await supabase
-            .from('queue_items')
-            .select('*')
-            .eq('party_id', party.id)
-            .eq('played', false)
-            .order('vote_count', { ascending: false })
-            .order('position', { ascending: true })
-          const items = data || []
+          const [{ data: activeQueue }, { count: playedC }] = await Promise.all([
+            supabase
+              .from('queue_items')
+              .select('*')
+              .eq('party_id', party.id)
+              .eq('played', false)
+              .order('vote_count', { ascending: false })
+              .order('position', { ascending: true }),
+            supabase
+              .from('queue_items')
+              .select('id', { count: 'exact', head: true })
+              .eq('party_id', party.id)
+              .eq('played', true),
+          ])
+          const items = activeQueue || []
+          setPlayedCount(playedC || 0)
           if (items.length > 0) {
             setCurrent((cur) => {
               if (!cur) return items[0]
-              // keep current if still in list
               const stillPlaying = items.find((i) => i.id === cur.id)
               return stillPlaying || items[0]
             })
@@ -120,7 +149,6 @@ export default function PartyRoom({ code }: { code: string }) {
     return () => { supabase.removeChannel(channel) }
   }, [party])
 
-  // ========== ADD SONG ==========
   const addSong = async (song: KaraokeSong) => {
     if (!party) return
     const position = (current ? 1 : 0) + queue.length
@@ -137,13 +165,10 @@ export default function PartyRoom({ code }: { code: string }) {
     })
   }
 
-  // ========== SONG ENDED → NEXT ==========
   const handleEnded = useCallback(async () => {
     if (!current || !party) return
-    // Mark played
     await supabase.from('queue_items').update({ played: true }).eq('id', current.id)
 
-    // Log to history
     if (profile) {
       await supabase.from('play_history').insert({
         user_id: profile.id,
@@ -161,10 +186,7 @@ export default function PartyRoom({ code }: { code: string }) {
     }
   }, [current, party, profile])
 
-  // ========== SKIP ==========
   const skip = () => handleEnded()
-
-  // ========== REMOVE / VOTE ==========
   const removeFromQueue = async (id: string) => {
     await supabase.from('queue_items').delete().eq('id', id)
   }
@@ -174,7 +196,6 @@ export default function PartyRoom({ code }: { code: string }) {
     if (item) await supabase.from('queue_items').update({ vote_count: (item.vote_count || 0) + 1 }).eq('id', id)
   }
 
-  // ========== INVITE (needs paid plan) ==========
   const openQR = () => {
     if (!canParty) {
       setShowUpgrade(true)
@@ -183,7 +204,6 @@ export default function PartyRoom({ code }: { code: string }) {
     setShowQR(true)
   }
 
-  // ========== RENDER ==========
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: s.black, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666' }}>
@@ -209,7 +229,6 @@ export default function PartyRoom({ code }: { code: string }) {
 
   return (
     <div style={{ minHeight: '100vh', background: s.black, display: 'flex', flexDirection: 'column' }}>
-      {/* HEADER */}
       <header
         style={{
           padding: '12px 16px',
@@ -259,7 +278,23 @@ export default function PartyRoom({ code }: { code: string }) {
         </div>
       </header>
 
-      {/* MAIN GRID */}
+      {partyEnded && (
+        <div
+          style={{
+            background: `linear-gradient(135deg, ${s.redDark}, ${s.red})`,
+            padding: '14px 20px',
+            textAlign: 'center',
+            fontSize: 14,
+            fontWeight: 700,
+          }}
+        >
+          🔒 Free party limit reached (3 songs played).{' '}
+          <Link href="/pricing" style={{ textDecoration: 'underline', color: 'white' }}>
+            Upgrade for unlimited →
+          </Link>
+        </div>
+      )}
+
       <div
         style={{
           flex: 1,
@@ -272,7 +307,6 @@ export default function PartyRoom({ code }: { code: string }) {
       >
         <style>{`@media (max-width: 900px) { .kr-main { grid-template-columns: 1fr !important; } }`}</style>
 
-        {/* LEFT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div
             style={{
@@ -332,7 +366,6 @@ export default function PartyRoom({ code }: { code: string }) {
           />
         </div>
 
-        {/* RIGHT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
           <div
             style={{
@@ -352,8 +385,18 @@ export default function PartyRoom({ code }: { code: string }) {
                   🎵 {t.up_next}
                 </div>
                 <div style={{ fontSize: 17, fontWeight: 800 }}>{t.songs_count(queue.length)}</div>
+                {isHostFree && (
+                  <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                    {playedCount}/{FREE_PLAYED_LIMIT} songs used
+                  </div>
+                )}
               </div>
-              <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAdd(true)}
+                disabled={partyEnded || queueFullForPlan}
+              >
                 + {t.add}
               </Button>
             </div>
@@ -473,8 +516,8 @@ export default function PartyRoom({ code }: { code: string }) {
           onAdd={addSong}
           onClose={() => setShowAdd(false)}
           onUpgrade={() => { setShowAdd(false); router.push('/pricing') }}
-          atLimit={queue.length + (current ? 1 : 0) >= queueLimit}
-          queueLimit={queueLimit}
+          atLimit={partyEnded || queueFullForPlan}
+          queueLimit={isHostFree ? FREE_PLAYED_LIMIT : 999}
         />
       )}
 

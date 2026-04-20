@@ -1,11 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Button from '@/components/ui/Button'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { supabase } from '@/lib/supabase/client'
 import { s, PLANS } from '@/types'
+
+const FREE_PARTY_LIMIT = 2
 
 function randomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -21,6 +24,30 @@ export default function NewPartyPage() {
   const [type, setType] = useState('birthday')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [plan, setPlan] = useState<string>('free')
+  const [partyCount, setPartyCount] = useState(0)
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      const [{ data: profile }, { count }] = await Promise.all([
+        supabase.from('profiles').select('plan').eq('id', user.id).single(),
+        supabase
+          .from('parties')
+          .select('id', { count: 'exact', head: true })
+          .eq('host_id', user.id),
+      ])
+      setPlan(profile?.plan || 'free')
+      setPartyCount(count || 0)
+      setLoading(false)
+    }
+    load()
+  }, [router])
 
   const types = [
     { id: 'birthday', label: t.new_party_type_birthday },
@@ -30,9 +57,12 @@ export default function NewPartyPage() {
     { id: 'other', label: t.new_party_type_other },
   ]
 
+  const isFree = plan === 'free'
+  const blocked = isFree && partyCount >= FREE_PARTY_LIMIT
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || blocked) return
     setCreating(true)
     setError('')
     const { data: { user } } = await supabase.auth.getUser()
@@ -41,7 +71,6 @@ export default function NewPartyPage() {
       return
     }
 
-    // Generate a unique code (try up to 5 times)
     let code = ''
     for (let i = 0; i < 5; i++) {
       code = randomCode()
@@ -70,6 +99,49 @@ export default function NewPartyPage() {
     router.push(`/party/${code}`)
   }
 
+  if (loading) {
+    return <div style={{ padding: 40, textAlign: 'center', color: '#666' }}>{t.loading}</div>
+  }
+
+  // BLOCKED: free user hit 2-party limit
+  if (blocked) {
+    return (
+      <div style={{ padding: 24, maxWidth: 500, margin: '40px auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>🔒</div>
+        <div
+          style={{
+            fontSize: 11,
+            color: s.redLight,
+            letterSpacing: 2,
+            fontWeight: 800,
+            marginBottom: 6,
+          }}
+        >
+          LIMIT REACHED
+        </div>
+        <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 10, letterSpacing: -0.5 }}>
+          You've used your {FREE_PARTY_LIMIT} free parties
+        </h1>
+        <p style={{ color: '#aaa', fontSize: 15, marginBottom: 24, lineHeight: 1.6 }}>
+          Free accounts can create up to {FREE_PARTY_LIMIT} parties. Upgrade to unlock unlimited
+          parties, unlimited mic, party mode, and QR invites.
+        </p>
+        <Link href="/pricing">
+          <Button variant="primary" size="lg" fullWidth>
+            ⚡ Upgrade now →
+          </Button>
+        </Link>
+        <div style={{ marginTop: 10 }}>
+          <Link href="/dashboard">
+            <Button variant="ghost" fullWidth>
+              ← Back to dashboard
+            </Button>
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: 24, maxWidth: 560, margin: '0 auto' }}>
       <div
@@ -86,6 +158,23 @@ export default function NewPartyPage() {
       <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 20, letterSpacing: -0.5 }}>
         {t.new_party_title}
       </h1>
+
+      {/* Free tier banner */}
+      {isFree && (
+        <div
+          style={{
+            background: 'rgba(230,0,18,0.1)',
+            border: `1px solid ${s.red}55`,
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 14,
+            fontSize: 13,
+          }}
+        >
+          <strong>Free plan:</strong> {partyCount} of {FREE_PARTY_LIMIT} parties used ·
+          Each party limited to 3 songs. <Link href="/pricing" style={{ color: s.redLight, textDecoration: 'underline' }}>Upgrade for unlimited</Link>
+        </div>
+      )}
 
       <form onSubmit={handleCreate}>
         <div style={{ background: s.dark, borderRadius: 12, padding: 14, marginBottom: 10 }}>
