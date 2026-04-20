@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import LangToggle from '@/components/ui/LangToggle'
 import UpgradeButton from '@/components/ui/UpgradeButton'
+import AudioDevicesPanel from '@/components/ui/AudioDevicesPanel'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { supabase } from '@/lib/supabase/client'
 import { s, Profile, PLANS } from '@/types'
@@ -113,9 +114,15 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* AUDIO */}
+      {/* AUDIO DEVICES (NEW) */}
+      <SectionLabel text="AUDIO DEVICES" />
+      <div style={{ marginBottom: 16 }}>
+        <AudioDevicesPanel />
+      </div>
+
+      {/* AUDIO PROCESSING */}
       <SectionLabel text={t.settings_audio} />
-      <div style={{ background: s.dark, borderRadius: 12, padding: 16 }}>
+      <div style={{ background: s.dark, borderRadius: 12, padding: 16, marginBottom: 40 }}>
         <Row label={t.settings_echo}>
           <Toggle on={echo} onChange={(v) => toggleAudio('echo', v)} />
         </Row>
