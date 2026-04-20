@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { s } from '@/types'
 
 interface Props {
@@ -14,7 +13,6 @@ interface PlanCard {
   id: PlanId
   name: string
   price: string
-  priceNum: string
   duration: string
   accent: string
   accentDark: string
@@ -34,7 +32,6 @@ const CARDS: PlanCard[] = [
     id: 'day',
     name: 'DAY PASS',
     price: 'RM9',
-    priceNum: '9',
     duration: '/24hr',
     accent: '#E60012',
     accentDark: '#B50010',
@@ -51,7 +48,6 @@ const CARDS: PlanCard[] = [
     id: 'month',
     name: 'MONTHLY',
     price: 'RM39',
-    priceNum: '39',
     duration: '/30 days',
     accent: '#aaaaaa',
     accentDark: '#888',
@@ -67,7 +63,6 @@ const CARDS: PlanCard[] = [
     id: 'year',
     name: 'YEARLY',
     price: 'RM199',
-    priceNum: '199',
     duration: '/365 days',
     accent: '#8888ff',
     accentDark: '#5555cc',
@@ -84,7 +79,6 @@ const CARDS: PlanCard[] = [
 ]
 
 export default function UpgradeModal({ onClose }: Props) {
-  const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [i, setI] = useState(0)
   const [loading, setLoading] = useState<PlanId | null>(null)
@@ -93,13 +87,13 @@ export default function UpgradeModal({ onClose }: Props) {
   const dx = useRef(0)
 
   useEffect(() => {
-    // Slide up animation on mount
+    // Zoom-in animation on mount
     setTimeout(() => setMounted(true), 20)
   }, [])
 
   const close = () => {
     setMounted(false)
-    setTimeout(onClose, 300)
+    setTimeout(onClose, 250)
   }
 
   const go = (n: number) => {
@@ -147,7 +141,7 @@ export default function UpgradeModal({ onClose }: Props) {
         inset: 0,
         background: 'rgba(0,0,0,0.85)',
         display: 'flex',
-        alignItems: 'flex-end',
+        alignItems: 'center',
         justifyContent: 'center',
         zIndex: 1000,
         padding: 14,
@@ -157,13 +151,14 @@ export default function UpgradeModal({ onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#0A0A0A',
-          borderRadius: '18px 18px 0 0',
-          padding: '18px 14px 20px',
+          borderRadius: 20,
+          padding: '22px 18px',
           width: '100%',
           maxWidth: 340,
-          borderTop: `2px solid ${s.red}`,
-          transform: mounted ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          border: `2px solid ${s.red}`,
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? 'scale(1)' : 'scale(0.92)',
+          transition: 'opacity 0.25s ease, transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
         }}
       >
         <div
@@ -171,28 +166,29 @@ export default function UpgradeModal({ onClose }: Props) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-start',
-            marginBottom: 14,
+            marginBottom: 18,
           }}
         >
           <div>
             <div
               style={{
-                fontSize: 9,
+                fontSize: 10,
                 color: s.redLight,
                 letterSpacing: 2.5,
                 fontWeight: 800,
+                marginBottom: 2,
               }}
             >
               CHOOSE YOUR PLAN
             </div>
-            <div style={{ fontSize: 16, fontWeight: 800, marginTop: 1 }}>
-              Unlock unlimited parties
+            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
+              Unlock unlimited
             </div>
             <div
               style={{
-                fontSize: 9,
+                fontSize: 10,
                 color: 'rgba(255,255,255,0.4)',
-                marginTop: 2,
+                marginTop: 3,
               }}
             >
               Same features. Different duration.
@@ -204,10 +200,11 @@ export default function UpgradeModal({ onClose }: Props) {
               background: 'transparent',
               border: 'none',
               color: '#666',
-              fontSize: 22,
+              fontSize: 26,
               cursor: 'pointer',
               padding: 0,
               lineHeight: 1,
+              fontFamily: 'inherit',
             }}
             aria-label="Close"
           >
@@ -215,14 +212,8 @@ export default function UpgradeModal({ onClose }: Props) {
           </button>
         </div>
 
-        <div
-          style={{
-            position: 'relative',
-            maxWidth: 260,
-            margin: '0 auto 10px',
-          }}
-        >
-          <div style={{ overflow: 'hidden', borderRadius: 12 }}>
+        <div style={{ position: 'relative', margin: '0 auto 14px' }}>
+          <div style={{ overflow: 'hidden', borderRadius: 14 }}>
             <div
               ref={trackRef}
               onTouchStart={onTouchStart}
@@ -236,13 +227,13 @@ export default function UpgradeModal({ onClose }: Props) {
               }}
             >
               {CARDS.map((card) => (
-                <div key={card.id} style={{ minWidth: '100%', padding: 2 }}>
+                <div key={card.id} style={{ minWidth: '100%', padding: 4 }}>
                   <div
                     style={{
                       background: card.bg,
-                      borderRadius: 10,
-                      padding: '14px 14px 12px',
-                      border: card.badge ? `1.5px solid ${card.border}` : `1px solid ${card.border}`,
+                      borderRadius: 13,
+                      padding: '18px 16px 16px',
+                      border: card.badge ? `2px solid ${card.border}` : `1px solid ${card.border}`,
                       position: 'relative',
                     }}
                   >
@@ -250,15 +241,15 @@ export default function UpgradeModal({ onClose }: Props) {
                       <div
                         style={{
                           position: 'absolute',
-                          top: -8,
-                          left: 14,
+                          top: -10,
+                          left: 16,
                           background: card.accent,
                           color: card.id === 'year' ? '#1A1A2A' : 'white',
-                          fontSize: 9,
+                          fontSize: 10,
                           fontWeight: 800,
-                          padding: '2px 8px',
+                          padding: '3px 10px',
                           borderRadius: 100,
-                          letterSpacing: 1,
+                          letterSpacing: 1.2,
                         }}
                       >
                         {card.badge}
@@ -266,27 +257,28 @@ export default function UpgradeModal({ onClose }: Props) {
                     )}
                     <div
                       style={{
-                        fontSize: 9,
+                        fontSize: 11,
                         color: card.accentLight,
-                        letterSpacing: 2,
+                        letterSpacing: 2.5,
                         fontWeight: 700,
-                        marginTop: card.badge ? 2 : 0,
-                        marginBottom: 2,
+                        marginTop: card.badge ? 3 : 0,
+                        marginBottom: 4,
                       }}
                     >
                       {card.name}
                     </div>
                     <div
                       style={{
-                        fontSize: 24,
+                        fontSize: 34,
                         fontWeight: 900,
-                        letterSpacing: -0.5,
+                        letterSpacing: -1,
+                        lineHeight: 1,
                       }}
                     >
                       {card.price}
                       <span
                         style={{
-                          fontSize: 10,
+                          fontSize: 12,
                           color: 'rgba(255,255,255,0.5)',
                           fontWeight: 400,
                           letterSpacing: 0,
@@ -299,10 +291,10 @@ export default function UpgradeModal({ onClose }: Props) {
                     {card.saveLabel && (
                       <div
                         style={{
-                          fontSize: 9,
+                          fontSize: 10,
                           color: card.accentLight,
                           fontWeight: 700,
-                          marginTop: -2,
+                          marginTop: 3,
                         }}
                       >
                         {card.saveLabel}
@@ -312,15 +304,15 @@ export default function UpgradeModal({ onClose }: Props) {
                       style={{
                         height: 1,
                         background: card.divider,
-                        margin: '10px 0',
+                        margin: '14px 0',
                       }}
                     />
                     <div
                       style={{
-                        fontSize: 10.5,
-                        color: 'rgba(255,255,255,0.8)',
-                        lineHeight: 1.75,
-                        marginBottom: 12,
+                        fontSize: 12.5,
+                        color: 'rgba(255,255,255,0.85)',
+                        lineHeight: 2,
+                        marginBottom: 14,
                       }}
                     >
                       ✓ Unlimited songs & mic
@@ -334,16 +326,16 @@ export default function UpgradeModal({ onClose }: Props) {
                       disabled={loading !== null}
                       style={{
                         width: '100%',
-                        padding: 9,
+                        padding: 12,
                         background: card.buttonBg,
                         color: card.buttonColor,
                         border: 'none',
-                        borderRadius: 8,
-                        fontSize: 12,
+                        borderRadius: 10,
+                        fontSize: 13,
                         fontWeight: 800,
                         cursor: loading ? 'not-allowed' : 'pointer',
-                        boxShadow: `0 3px 0 ${card.buttonShadow}`,
-                        letterSpacing: 0.8,
+                        boxShadow: `0 4px 0 ${card.buttonShadow}`,
+                        letterSpacing: 1,
                         opacity: loading && loading !== card.id ? 0.4 : 1,
                         fontFamily: 'inherit',
                       }}
@@ -360,18 +352,21 @@ export default function UpgradeModal({ onClose }: Props) {
             onClick={() => go(i - 1)}
             style={{
               position: 'absolute',
-              left: -28,
+              left: -12,
               top: '50%',
               transform: 'translateY(-50%)',
-              background: 'rgba(20,20,20,0.7)',
-              color: '#888',
-              border: '1px solid #2a2a2a',
-              width: 24,
-              height: 24,
+              background: 'rgba(20,20,20,0.9)',
+              color: 'white',
+              border: '1px solid #333',
+              width: 32,
+              height: 32,
               borderRadius: '50%',
-              fontSize: 12,
+              fontSize: 15,
               cursor: 'pointer',
               fontFamily: 'inherit',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             ‹
@@ -380,18 +375,21 @@ export default function UpgradeModal({ onClose }: Props) {
             onClick={() => go(i + 1)}
             style={{
               position: 'absolute',
-              right: -28,
+              right: -12,
               top: '50%',
               transform: 'translateY(-50%)',
-              background: 'rgba(20,20,20,0.7)',
-              color: '#888',
-              border: '1px solid #2a2a2a',
-              width: 24,
-              height: 24,
+              background: 'rgba(20,20,20,0.9)',
+              color: 'white',
+              border: '1px solid #333',
+              width: 32,
+              height: 32,
               borderRadius: '50%',
-              fontSize: 12,
+              fontSize: 15,
               cursor: 'pointer',
               fontFamily: 'inherit',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             ›
@@ -402,8 +400,8 @@ export default function UpgradeModal({ onClose }: Props) {
           style={{
             display: 'flex',
             justifyContent: 'center',
-            gap: 5,
-            marginBottom: 8,
+            gap: 6,
+            marginBottom: 10,
           }}
         >
           {CARDS.map((_, idx) => (
@@ -411,8 +409,8 @@ export default function UpgradeModal({ onClose }: Props) {
               key={idx}
               onClick={() => go(idx)}
               style={{
-                width: idx === i ? 14 : 3,
-                height: 3,
+                width: idx === i ? 18 : 4,
+                height: 4,
                 borderRadius: 100,
                 background: idx === i ? s.red : '#333',
                 cursor: 'pointer',
@@ -425,9 +423,9 @@ export default function UpgradeModal({ onClose }: Props) {
         <div
           style={{
             textAlign: 'center',
-            fontSize: 8,
-            color: 'rgba(255,255,255,0.3)',
-            letterSpacing: 1,
+            fontSize: 9,
+            color: 'rgba(255,255,255,0.35)',
+            letterSpacing: 1.5,
           }}
         >
           💳 CARD · 🏦 FPX · 📱 GRABPAY
