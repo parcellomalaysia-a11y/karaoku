@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import Button from '@/components/ui/Button'
 import { useLang } from '@/lib/i18n/LangProvider'
-import { s } from '@/types'
+import { supabase } from '@/lib/supabase/client'
+import { s, Favorite } from '@/types'
 import { KARAOKE_LIBRARY, KaraokeSong } from '@/lib/karaoke-library'
 
 interface Props {
@@ -14,75 +15,86 @@ interface Props {
   queueLimit: number
 }
 
+type Tab = 'search' | 'favorites'
+
 export default function AddSongModal({ onAdd, onClose, onUpgrade, atLimit, queueLimit }: Props) {
   const { t } = useLang()
   const [q, setQ] = useState('')
   const [results, setResults] = useState<KaraokeSong[]>(KARAOKE_LIBRARY)
   const [searching, setSearching] = useState(false)
   const [useApi, setUseApi] = useState(false)
+  const [favs, setFavs] = useState<Favorite[]>([])
+  const [tab, setTab] = useState<Tab>('search')
 
   useEffect(() => {
-    // Check if real YouTube API search is available
-    fetch('/api/youtube/search?q=test&probe=1').then(async (r) => {
-      const data = await r.json()
-      setUseApi(!!data.enabled)
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('added_at', { ascending: false })
+      const list = data || []
+      setFavs(list)
+      if (list.length > 0) setTab('favorites')
+    })
+    fetch('/api/youtube/search?q=test&probe=1').then(async r => {
+      const d = await r.json()
+      setUseApi(!!d.enabled)
     }).catch(() => setUseApi(false))
   }, [])
 
   useEffect(() => {
-    if (!q.trim()) {
-      setResults(KARAOKE_LIBRARY)
-      return
-    }
-
+    if (!q.trim()) { setResults(KARAOKE_LIBRARY); return }
     if (useApi) {
       const id = setTimeout(async () => {
         setSearching(true)
         try {
           const r = await fetch(`/api/youtube/search?q=${encodeURIComponent(q + ' karaoke')}`)
-          const data = await r.json()
-          if (data.items) setResults(data.items)
+          const d = await r.json()
+          if (d.items) setResults(d.items)
         } catch {}
         setSearching(false)
       }, 300)
       return () => clearTimeout(id)
     } else {
-      // Local filter
-      setResults(
-        KARAOKE_LIBRARY.filter(
-          (s) =>
-            s.title.toLowerCase().includes(q.toLowerCase()) ||
-            s.artist.toLowerCase().includes(q.toLowerCase())
-        )
-      )
+      setResults(KARAOKE_LIBRARY.filter(s =>
+        s.title.toLowerCase().includes(q.toLowerCase()) ||
+        s.artist.toLowerCase().includes(q.toLowerCase())
+      ))
     }
   }, [q, useApi])
+
+  const favSongs: KaraokeSong[] = favs.map(f => ({
+    id: f.video_id,
+    title: f.title,
+    artist: f.artist || '',
+    duration: '',
+    thumb: f.thumb_url || '',
+  }))
+
+  const filteredFavs = q.trim()
+    ? favSongs.filter(s =>
+        s.title.toLowerCase().includes(q.toLowerCase()) ||
+        s.artist.toLowerCase().includes(q.toLowerCase())
+      )
+    : favSongs
+
+  const displayList = tab === 'favorites' ? filteredFavs : results
 
   return (
     <div
       onClick={onClose}
       style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.92)',
-        zIndex: 100,
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: 20,
-        overflowY: 'auto',
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 100,
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto',
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
         style={{
-          background: s.dark,
-          borderRadius: 20,
-          padding: 20,
-          maxWidth: 700,
-          width: '100%',
-          marginTop: 40,
-          border: `1px solid ${s.gray}`,
+          background: s.dark, borderRadius: 20, padding: 20, maxWidth: 700, width: '100%',
+          marginTop: 40, border: `1px solid ${s.gray}`,
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -91,18 +103,53 @@ export default function AddSongModal({ onAdd, onClose, onUpgrade, atLimit, queue
             onClick={onClose}
             style={{ background: 'none', border: 'none', color: 'white', fontSize: 28, cursor: 'pointer' }}
             aria-label="Close"
-          >
-            ×
-          </button>
+          >×</button>
         </div>
 
         <input
           autoFocus
-          placeholder={`🔍  ${t.search_placeholder}`}
+          placeholder={`🔍  ${tab === 'favorites' ? 'Search your favorites...' : t.search_placeholder}`}
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={e => setQ(e.target.value)}
           style={{ marginBottom: 12 }}
         />
+
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <button
+            onClick={() => setTab('search')}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              background: tab === 'search' ? s.red : s.gray,
+              color: 'white',
+              border: 'none',
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: tab === 'search' ? `0 3px 0 ${s.redDark}` : 'none',
+            }}
+          >
+            🔍 YouTube
+          </button>
+          <button
+            onClick={() => setTab('favorites')}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              background: tab === 'favorites' ? s.red : s.gray,
+              color: 'white',
+              border: 'none',
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: tab === 'favorites' ? `0 3px 0 ${s.redDark}` : 'none',
+            }}
+          >
+            ♥ Favorites ({favs.length})
+          </button>
+        </div>
 
         {atLimit && (
           <div
@@ -133,57 +180,62 @@ export default function AddSongModal({ onAdd, onClose, onUpgrade, atLimit, queue
         )}
 
         <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
-          {results.map((song) => (
-            <div
-              key={song.id}
-              style={{
-                display: 'flex',
-                gap: 12,
-                padding: 10,
-                borderRadius: 10,
-                marginBottom: 6,
-                background: s.gray,
-                alignItems: 'center',
-                opacity: atLimit ? 0.5 : 1,
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={song.thumb}
-                alt=""
-                style={{ width: 80, height: 45, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontWeight: 700,
-                    fontSize: 14,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {song.title}
-                </div>
-                <div style={{ fontSize: 12, color: '#999' }}>
-                  {song.artist} · {song.duration}
-                </div>
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={atLimit}
-                onClick={() => {
-                  onAdd(song)
-                  onClose()
+          {displayList.length === 0 ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#666', fontSize: 13 }}>
+              {tab === 'favorites'
+                ? 'No favorites yet. Save songs from /dashboard/songs by tapping ♡'
+                : t.no_songs}
+            </div>
+          ) : (
+            displayList.map(song => (
+              <div
+                key={song.id}
+                style={{
+                  display: 'flex',
+                  gap: 12,
+                  padding: 10,
+                  borderRadius: 10,
+                  marginBottom: 6,
+                  background: s.gray,
+                  alignItems: 'center',
+                  opacity: atLimit ? 0.5 : 1,
                 }}
               >
-                + {t.add}
-              </Button>
-            </div>
-          ))}
-          {!searching && results.length === 0 && (
-            <div style={{ padding: 40, textAlign: 'center', color: '#666' }}>{t.no_songs}</div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={song.thumb}
+                  alt=""
+                  style={{ width: 80, height: 45, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: 14,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {song.title}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#999' }}>
+                    {song.artist}{song.duration ? ` · ${song.duration}` : ''}
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={atLimit}
+                  onClick={() => {
+                    onAdd(song)
+                    onClose()
+                  }}
+                >
+                  + {t.add}
+                </Button>
+              </div>
+            ))
           )}
         </div>
       </div>
