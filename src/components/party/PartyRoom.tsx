@@ -6,6 +6,8 @@ import Link from 'next/link'
 import Logo from '@/components/ui/Logo'
 import Button from '@/components/ui/Button'
 import LangToggle from '@/components/ui/LangToggle'
+import UpgradeButton from '@/components/ui/UpgradeButton'
+import UpgradeModal from '@/components/ui/UpgradeModal'
 import YTPlayer from './YTPlayer'
 import MicPanel from './MicPanel'
 import AddSongModal from './AddSongModal'
@@ -270,11 +272,7 @@ export default function PartyRoom({ code }: { code: string }) {
           <Button variant="ghost" size="sm" onClick={openQR}>
             📱 {t.invite}
           </Button>
-          {currentPlan === 'free' && (
-            <Button variant="primary" size="sm" onClick={() => router.push('/pricing')}>
-              ⚡ {t.upgrade}
-            </Button>
-          )}
+          {currentPlan === 'free' && <UpgradeButton currentPlan={currentPlan} />}
         </div>
       </header>
 
@@ -289,9 +287,12 @@ export default function PartyRoom({ code }: { code: string }) {
           }}
         >
           🔒 Free party limit reached (3 songs played).{' '}
-          <Link href="/pricing" style={{ textDecoration: 'underline', color: 'white' }}>
+          <span
+            onClick={() => setShowUpgrade(true)}
+            style={{ textDecoration: 'underline', color: 'white', cursor: 'pointer' }}
+          >
             Upgrade for unlimited →
-          </Link>
+          </span>
         </div>
       )}
 
@@ -515,7 +516,7 @@ export default function PartyRoom({ code }: { code: string }) {
         <AddSongModal
           onAdd={addSong}
           onClose={() => setShowAdd(false)}
-          onUpgrade={() => { setShowAdd(false); router.push('/pricing') }}
+          onUpgrade={() => { setShowAdd(false); setShowUpgrade(true) }}
           atLimit={partyEnded || queueFullForPlan}
           queueLimit={isHostFree ? FREE_PLAYED_LIMIT : 999}
         />
@@ -523,41 +524,7 @@ export default function PartyRoom({ code }: { code: string }) {
 
       {showQR && <QRModal code={code} onClose={() => setShowQR(false)} />}
 
-      {showUpgrade && (
-        <div
-          onClick={() => setShowUpgrade(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.9)',
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: s.dark,
-              borderRadius: 20,
-              padding: 28,
-              maxWidth: 400,
-              textAlign: 'center',
-            }}
-          >
-            <div style={{ fontSize: 44, marginBottom: 10 }}>⚡</div>
-            <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>{t.upgrade}</h2>
-            <p style={{ color: '#999', fontSize: 14, marginBottom: 20 }}>
-              Unlock unlimited queue, mic, and party mode with QR invites.
-            </p>
-            <Button variant="primary" fullWidth onClick={() => router.push('/pricing')}>
-              {t.pricing_title} →
-            </Button>
-          </div>
-        </div>
-      )}
+      {showUpgrade && <UpgradeModal onClose={() => setShowUpgrade(false)} />}
     </div>
   )
 }

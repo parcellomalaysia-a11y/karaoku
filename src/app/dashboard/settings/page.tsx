@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import Button from '@/components/ui/Button'
 import LangToggle from '@/components/ui/LangToggle'
+import UpgradeButton from '@/components/ui/UpgradeButton'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { supabase } from '@/lib/supabase/client'
 import { s, Profile, PLANS } from '@/types'
@@ -104,9 +104,13 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-        <Link href="/pricing">
-          <Button variant="primary" size="sm">{t.settings_upgrade}</Button>
-        </Link>
+        {profile.plan === 'free' && (
+          <UpgradeButton
+            currentPlan={profile.plan}
+            label={t.settings_upgrade}
+            style={{ padding: '5px 10px', fontSize: 11 }}
+          />
+        )}
       </div>
 
       {/* AUDIO */}
