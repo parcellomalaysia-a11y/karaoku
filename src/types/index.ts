@@ -29,6 +29,7 @@ export interface Party {
   current_song_thumb: string | null
   current_song_started_at: string | null
   is_playing: boolean
+  mic_seconds_used?: number
   created_at: string
   ended_at: string | null
 }
@@ -43,6 +44,7 @@ export interface QueueItem {
   thumb_url: string | null
   added_by_name: string | null
   added_by_id: string | null
+  added_by_fingerprint?: string | null
   position: number
   vote_count: number
   played: boolean
@@ -91,7 +93,9 @@ export interface PromoCode {
 }
 
 // ============================================================
-// PLAN LIMITS (Memoir pattern: locked at creation, paid users only counted after plan_upgraded_at)
+// PLATFORM ACCESS TIERS
+// These describe PLATFORM FEATURES ONLY — not music licensing.
+// Users bring their own YouTube content under YouTube's ToS.
 // ============================================================
 export const PLANS = {
   free: {
@@ -99,15 +103,26 @@ export const PLANS = {
     price: 'RM0',
     priceNum: 0,
     period: 'forever',
+    periodBm: 'selamanya',
     queue: 3,
     micSongs: 1,
     party: false,
-    features: ['3 songs in queue', '1 mic song', 'Basic player'],
-    featuresBm: ['3 lagu dalam queue', '1 lagu mic', 'Player asas'],
+    features: [
+      'Up to 3 tracks per queue',
+      'Single voice chat session',
+      'Single-host rooms',
+      'YouTube embed playback',
+    ],
+    featuresBm: [
+      '3 track setiap queue',
+      '1 sesi voice chat',
+      'Bilik hos tunggal',
+      'Main YouTube benam',
+    ],
   },
   day: {
-    label: 'Day Pass',
-    labelBm: 'Pas Harian',
+    label: 'Day Access',
+    labelBm: 'Akses Harian',
     price: 'RM9',
     priceNum: 9,
     period: '24 hours',
@@ -115,8 +130,20 @@ export const PLANS = {
     queue: 999,
     micSongs: 999,
     party: true,
-    features: ['Unlimited queue', 'Unlimited mic', 'Party mode', 'QR invites'],
-    featuresBm: ['Queue tanpa had', 'Mic tanpa had', 'Mod party', 'Jemputan QR'],
+    features: [
+      'Unlimited queue capacity',
+      'Unlimited voice chat time',
+      'Multi-user rooms (QR + sync)',
+      'Up to 20 concurrent guests',
+      '24-hour platform access',
+    ],
+    featuresBm: [
+      'Kapasiti queue tanpa had',
+      'Masa voice chat tanpa had',
+      'Bilik multi-user (QR + sync)',
+      'Sehingga 20 tetamu serentak',
+      'Akses platform 24 jam',
+    ],
     durationHours: 24,
   },
   month: {
@@ -129,8 +156,20 @@ export const PLANS = {
     queue: 999,
     micSongs: 999,
     party: true,
-    features: ['Everything in Day Pass', 'Playback history', 'Save favorites'],
-    featuresBm: ['Semua dalam Pas Harian', 'Sejarah main', 'Simpan kegemaran'],
+    features: [
+      'Everything in Day Access',
+      'Session history & analytics',
+      'Saved YouTube links library',
+      'Priority session loading',
+      '30-day platform access',
+    ],
+    featuresBm: [
+      'Semua dalam Akses Harian',
+      'Sejarah sesi & analitik',
+      'Perpustakaan link tersimpan',
+      'Pemuatan sesi keutamaan',
+      'Akses platform 30 hari',
+    ],
     durationHours: 24 * 30,
   },
   year: {
@@ -143,14 +182,28 @@ export const PLANS = {
     queue: 999,
     micSongs: 999,
     party: true,
-    features: ['Everything in Monthly', 'Cafe/vendor license', 'Priority support', 'Save 58%'],
-    featuresBm: ['Semua dalam Bulanan', 'Lesen kafe/vendor', 'Sokongan utama', 'Jimat 58%'],
+    features: [
+      'Everything in Monthly',
+      'Extended room capacity (100+ guests)',
+      'Priority support',
+      'Early access to new features',
+      '365-day platform access',
+      'Save 58% vs monthly',
+    ],
+    featuresBm: [
+      'Semua dalam Bulanan',
+      'Kapasiti bilik lanjutan (100+ tetamu)',
+      'Sokongan keutamaan',
+      'Akses awal ciri baharu',
+      'Akses platform 365 hari',
+      'Jimat 58% vs bulanan',
+    ],
     durationHours: 24 * 365,
   },
 } as const
 
 // ============================================================
-// DESIGN TOKENS (Nintendo red theme — the Memoir-equivalent for Karaoku)
+// DESIGN TOKENS
 // ============================================================
 export const s = {
   red: '#E60012',
@@ -172,4 +225,4 @@ export const s = {
   gold: '#d4af37',
 } as const
 
-export const ADMIN_EMAILS = ['danielnordin53@gmail.com'] // same as Memoir
+export const ADMIN_EMAILS = ['danielnordin53@gmail.com']

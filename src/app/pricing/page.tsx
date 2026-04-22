@@ -21,7 +21,6 @@ export default function PricingPage() {
       return
     }
     setLoading(planId)
-    // Check auth first
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       router.push(`/login?next=/checkout?plan=${planId}`)
@@ -59,17 +58,31 @@ export default function PricingPage() {
 
       <section style={{ padding: '60px 32px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', textAlign: 'center' }}>
+          <div style={{
+            fontSize: 11,
+            letterSpacing: 3,
+            color: s.redLight,
+            fontWeight: 800,
+            marginBottom: 10,
+          }}>
+            {lang === 'bm' ? 'HARGA PLATFORM' : 'PLATFORM PRICING'}
+          </div>
           <h1 style={{ fontSize: 42, fontWeight: 900, letterSpacing: -1, marginBottom: 12 }}>
             {t.pricing_title}
           </h1>
-          <p style={{ color: '#999', fontSize: 16, marginBottom: 40, maxWidth: 560, margin: '0 auto 40px' }}>
+          <p style={{ color: '#999', fontSize: 15, marginBottom: 12, maxWidth: 620, margin: '0 auto 12px', lineHeight: 1.6 }}>
             {t.pricing_sub}
+          </p>
+          <p style={{ color: '#666', fontSize: 12, maxWidth: 620, margin: '0 auto 40px', lineHeight: 1.5 }}>
+            {lang === 'bm'
+              ? 'Ciri perisian sahaja. Kandungan dimainkan melalui pemain benam YouTube.'
+              : 'Software features only. Content plays via YouTube\'s embedded player.'}
           </p>
 
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
               gap: 16,
               textAlign: 'left',
             }}
@@ -109,15 +122,16 @@ export default function PricingPage() {
                       🔥 {t.popular}
                     </div>
                   )}
-                  <div style={{ fontSize: 14, color: '#999', marginBottom: 4 }}>{label}</div>
-                  <div style={{ fontSize: 40, fontWeight: 900, color: accent, marginBottom: 2 }}>
+                  <div style={{ fontSize: 14, color: '#999', marginBottom: 4, fontWeight: 700 }}>{label}</div>
+                  <div style={{ fontSize: 40, fontWeight: 900, color: accent, marginBottom: 2, letterSpacing: -1 }}>
                     {p.price}
                   </div>
                   <div style={{ fontSize: 13, color: '#999', marginBottom: 20 }}>{period}</div>
                   <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px' }}>
                     {features.map((f, i) => (
-                      <li key={i} style={{ fontSize: 13, padding: '6px 0', color: '#ccc' }}>
-                        ✓ {f}
+                      <li key={i} style={{ fontSize: 13, padding: '6px 0', color: '#ccc', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <span style={{ color: accent, fontWeight: 800, flexShrink: 0 }}>✓</span>
+                        <span>{f}</span>
                       </li>
                     ))}
                   </ul>
@@ -134,19 +148,64 @@ export default function PricingPage() {
               )
             })}
           </div>
+
+          {/* LEGAL CLARITY BOX */}
+          <div style={{
+            maxWidth: 720,
+            margin: '50px auto 0',
+            background: s.dark,
+            border: `1px solid ${s.gray}`,
+            borderRadius: 12,
+            padding: 20,
+            textAlign: 'left',
+          }}>
+            <div style={{ fontSize: 10, color: s.redLight, letterSpacing: 2, fontWeight: 800, marginBottom: 8 }}>
+              {lang === 'bm' ? 'APA YANG ANDA BAYAR' : 'WHAT YOU\'RE PAYING FOR'}
+            </div>
+            <div style={{ fontSize: 14, color: '#ccc', lineHeight: 1.7, marginBottom: 10 }}>
+              {lang === 'bm'
+                ? 'Anda bayar untuk akses ciri platform — hosting bilik, pengurusan queue, penyelarasan realtime, dan sokongan teknikal.'
+                : 'You\'re paying for platform feature access — room hosting, queue management, real-time coordination, and technical support.'}
+            </div>
+            <div style={{ fontSize: 13, color: '#999', lineHeight: 1.7 }}>
+              {lang === 'bm'
+                ? 'Anda TIDAK bayar untuk muzik, video, atau apa-apa kandungan berhak cipta. Semua kandungan dimainkan melalui pemain benam YouTube di bawah terma YouTube. Pengguna bertanggungjawab untuk pematuhan hak cipta penggunaan kandungan pihak ketiga.'
+                : 'You are NOT paying for music, video, or any copyrighted content. All content plays via YouTube\'s embedded player under YouTube\'s terms. Users are responsible for copyright compliance when using third-party content.'}
+            </div>
+          </div>
         </div>
       </section>
 
       <footer
         style={{
-          padding: '40px 32px',
-          textAlign: 'center',
+          padding: '40px 32px 24px',
           color: '#666',
-          fontSize: 13,
+          fontSize: 12,
           borderTop: `1px solid ${s.gray}`,
+          background: '#0a0a0a',
         }}
       >
-        {t.footer} 🇲🇾
+        <div style={{
+          maxWidth: 900,
+          margin: '0 auto',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: 20,
+        }}>
+          <div>
+            <Logo size={28} />
+            <div style={{ fontSize: 11, color: '#555', marginTop: 8 }}>
+              {lang === 'bm' ? '© 2026 Karaoku · Platform pengurusan sesi' : '© 2026 Karaoku · Session management platform'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+            <Link href="/terms"><span style={{ color: '#aaa', cursor: 'pointer' }}>{lang === 'bm' ? 'Terma' : 'Terms'}</span></Link>
+            <Link href="/privacy"><span style={{ color: '#aaa', cursor: 'pointer' }}>{lang === 'bm' ? 'Privasi' : 'Privacy'}</span></Link>
+            <a href="mailto:support@karaoku.my" style={{ color: '#aaa' }}>Support</a>
+          </div>
+        </div>
       </footer>
     </div>
   )
