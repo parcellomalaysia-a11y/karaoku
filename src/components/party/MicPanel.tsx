@@ -4,47 +4,144 @@ import { useState, useEffect, useRef } from 'react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { supabase } from '@/lib/supabase/client'
 import { s } from '@/types'
-import { MicManager, detectDeviceType } from '@/lib/mic'
 
 export const FREE_MIC_SECONDS = 600
 
+// All props OPTIONAL — component survives old callers
 interface Props {
-  plan: string
-  hostPlan: string
+  plan?: string
+  hostPlan?: string
   partyId?: string
   initialSecondsUsed?: number
-  partyLocked: boolean
-  musicVolume: number
-  onMusicVolumeChange: (v: number) => void
-  onTimeLimitHit: () => void
+  partyLocked?: boolean
+  musicVolume?: number
+  onMusicVolumeChange?: (v: number) => void
+  onTimeLimitHit?: () => void
   onSecondsUpdate?: (totalSeconds: number) => void
-  onNeedUpgrade: () => void
+  onNeedUpgrade?: () => void
+  // OLD props (backward compat)
+  freeLimit?: number
+  songsUsed?: number
 }
 
-export default function MicPanel({
-  plan,
-  hostPlan,
-  partyId,
-  initialSecondsUsed = 0,
-  partyLocked,
-  musicVolume,
-  onMusicVolumeChange,
-  onTimeLimitHit,
-  onSecondsUpdate,
-  onNeedUpgrade,
-}: Props) {
+// Inline mic manager — no external dependency on mic.ts
+class SimpleMic {
+  private ctx: AudioContext | null = null
+  private stream: MediaStream | null = null
+  private source: MediaStreamAudioSourceNode | null = null
+  private gain: GainNode | null = null
+  private boostGain: GainNode | null = null
+  private analyser: AnalyserNode | null = null
+  public active = false
+
+  async start(opts: { echo?: boolean; noise?: boolean; autoGain?: boolean; deviceId?: string; boost?: number; performanceMode?: boolean } = {}) {
+    if (this.active) return
+    const perfMode = opts.performanceMode === true
+    const echo = perfMode ? false : (opts.echo ?? true)
+    const noise = perfMode ? false : (opts.noise ?? true)
+    const autoGain = perfMode ? false : (opts.autoGain ?? true)
+    const deviceId = opts.deviceId
+    const boost = opts.boost ?? 1.0
+
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: echo,
+      noiseSuppression: noise,
+      autoGainControl: autoGain,
+    }
+    if (deviceId) audioConstraints.deviceId = { exact: deviceId }
+
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
+    } catch (err: any) {
+      if (err.name === 'OverconstrainedError' && deviceId) {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: echo, noiseSuppression: noise, autoGainControl: autoGain },
+        })
+      } else {
+        throw err
+      }
+    }
+
+    this.ctx = new AudioContext({ latencyHint: 'interactive' })
+    this.source = this.ctx.createMediaStreamSource(this.stream)
+    this.gain = this.ctx.createGain()
+    this.gain.gain.value = 1.0
+    this.boostGain = this.ctx.createGain()
+    this.boostGain.gain.value = Math.max(0.5, Math.min(3.0, boost))
+    this.analyser = this.ctx.createAnalyser()
+    this.analyser.fftSize = 64
+
+    this.source.connect(this.gain)
+    this.gain.connect(this.boostGain)
+    this.boostGain.connect(this.analyser)
+    this.boostGain.connect(this.ctx.destination)
+
+    this.active = true
+  }
+
+  stop() {
+    if (!this.active) return
+    if (this.stream) this.stream.getTracks().forEach((t) => t.stop())
+    if (this.ctx) { try { this.ctx.close() } catch {} }
+    this.ctx = null
+    this.stream = null
+    this.source = null
+    this.gain = null
+    this.boostGain = null
+    this.analyser = null
+    this.active = false
+  }
+
+  setVolume(v: number) {
+    if (this.gain) this.gain.gain.value = Math.max(0, Math.min(2, v))
+  }
+
+  setBoost(b: number) {
+    if (this.boostGain) this.boostGain.gain.value = Math.max(0.5, Math.min(3.0, b))
+  }
+
+  getLevel(): number {
+    if (!this.analyser) return 0
+    const arr = new Uint8Array(this.analyser.frequencyBinCount)
+    this.analyser.getByteFrequencyData(arr)
+    let sum = 0
+    for (let i = 0; i < arr.length; i++) sum += arr[i]
+    return sum / arr.length / 255
+  }
+}
+
+export default function MicPanel(props: Props) {
+  const {
+    plan = 'free',
+    hostPlan = 'free',
+    partyId,
+    initialSecondsUsed = 0,
+    partyLocked = false,
+    musicVolume: externalMusicVolume,
+    onMusicVolumeChange,
+    onTimeLimitHit,
+    onSecondsUpdate,
+    onNeedUpgrade,
+  } = props
+
   const { t } = useLang()
-  const micRef = useRef<MicManager>(new MicManager())
+  const micRef = useRef<SimpleMic>(new SimpleMic())
   const [on, setOn] = useState(false)
   const [level, setLevel] = useState(0)
   const [vol, setVol] = useState(1)
   const [boost, setBoost] = useState(1.5)
-  // PERFORMANCE MODE DEFAULT OFF — safer for most users (phone mic)
   const [perfMode, setPerfMode] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [secondsUsed, setSecondsUsed] = useState(initialSecondsUsed)
-  const [micType, setMicType] = useState<string>('builtin')
+  const [localMusicVol, setLocalMusicVol] = useState(100)
   const [toast, setToast] = useState('')
+
+  // Music volume — use prop if provided, else local state
+  const musicVolume = externalMusicVolume !== undefined ? externalMusicVolume : localMusicVol
+  const handleMusicVolumeChange = (v: number) => {
+    if (onMusicVolumeChange) onMusicVolumeChange(v)
+    else setLocalMusicVol(v)
+  }
 
   const tickRef = useRef<NodeJS.Timeout | null>(null)
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -54,28 +151,15 @@ export default function MicPanel({
   const timeExceeded = isHostFree && secondsUsed >= FREE_MIC_SECONDS
   const locked = partyLocked || timeExceeded
 
-  // Load saved prefs
+  // Load prefs
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const b = localStorage.getItem('karaoku_boost')
-    if (b) setBoost(parseFloat(b))
-    const p = localStorage.getItem('karaoku_perf_mode')
-    // Default OFF unless user explicitly turned ON previously
-    if (p === 'true') setPerfMode(true)
-  }, [])
-
-  // Detect mic type from saved device
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const saved = typeof window !== 'undefined' ? localStorage.getItem('karaoku_mic_id') : null
-        if (!saved) return
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const mic = devices.find((d) => d.deviceId === saved && d.kind === 'audioinput')
-        if (mic) setMicType(detectDeviceType(mic.label))
-      } catch {}
-    }
-    load()
+    try {
+      const b = localStorage.getItem('karaoku_boost')
+      if (b) setBoost(parseFloat(b))
+      const p = localStorage.getItem('karaoku_perf_mode')
+      if (p === 'true') setPerfMode(true)
+    } catch {}
   }, [])
 
   useEffect(() => {
@@ -91,36 +175,31 @@ export default function MicPanel({
   const saveToSupabase = async (totalSeconds: number) => {
     if (!partyId || totalSeconds === lastSavedRef.current) return
     try {
-      await supabase
-        .from('parties')
-        .update({ mic_seconds_used: totalSeconds })
-        .eq('id', partyId)
+      await supabase.from('parties').update({ mic_seconds_used: totalSeconds }).eq('id', partyId)
       lastSavedRef.current = totalSeconds
-    } catch (err) {
-      console.error('[mic] save failed', err)
-    }
+    } catch {}
   }
 
   const stopMic = () => {
-    micRef.current.stop()
+    try { micRef.current.stop() } catch {}
     setOn(false)
     if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null }
     if (saveTimerRef.current) { clearInterval(saveTimerRef.current); saveTimerRef.current = null }
     saveToSupabase(secondsUsed)
   }
 
-  const startMic = async () => {
-    if (locked) { onNeedUpgrade(); return }
+  const toggle = async () => {
+    if (on) { stopMic(); return }
+    if (locked) { onNeedUpgrade?.(); return }
 
     try {
       const savedDeviceId = typeof window !== 'undefined' ? localStorage.getItem('karaoku_mic_id') : null
 
       await micRef.current.start({
         performanceMode: perfMode,
-        // When perf mode OFF, use safe browser filters
-        echo: true,              // always try to cancel echo (prevent feedback)
-        noise: true,             // always reduce background noise
-        autoGain: false,         // we handle gain via boost slider
+        echo: true,
+        noise: true,
+        autoGain: false,
         deviceId: savedDeviceId || undefined,
         boost,
       })
@@ -131,7 +210,7 @@ export default function MicPanel({
           const next = prev + 1
           onSecondsUpdate?.(next)
           if (isHostFree && prev < FREE_MIC_SECONDS && next >= FREE_MIC_SECONDS) {
-            setTimeout(() => { stopMic(); onTimeLimitHit() }, 0)
+            setTimeout(() => { stopMic(); onTimeLimitHit?.() }, 0)
           }
           return next
         })
@@ -141,67 +220,56 @@ export default function MicPanel({
         setSecondsUsed((c) => { saveToSupabase(c); return c })
       }, 10000)
     } catch (err: any) {
-      if (err.name === 'OverconstrainedError') {
-        alert('Selected mic unavailable. Switch in Settings → Audio.')
-      } else {
-        alert(t.mic_denied || 'Mic permission denied. Grant microphone access.')
-      }
+      alert(t.mic_denied || 'Mic permission denied. Please grant microphone access.')
     }
-  }
-
-  const toggle = async () => {
-    if (on) { stopMic(); return }
-    await startMic()
   }
 
   const togglePerfMode = () => {
     if (on) {
-      showToast('Turn mic OFF first to change mode')
+      showToast('Turn mic OFF first')
       return
     }
     const next = !perfMode
     setPerfMode(next)
-    if (typeof window !== 'undefined') localStorage.setItem('karaoku_perf_mode', next.toString())
+    try {
+      if (typeof window !== 'undefined') localStorage.setItem('karaoku_perf_mode', next.toString())
+    } catch {}
     showToast(next ? 'Performance Mode ON' : 'Performance Mode OFF')
   }
 
   useEffect(() => {
     if (!on) { setLevel(0); return }
-    const id = setInterval(() => setLevel(micRef.current.getLevel()), 80)
+    const id = setInterval(() => {
+      try { setLevel(micRef.current.getLevel()) } catch {}
+    }, 80)
     return () => clearInterval(id)
   }, [on])
 
-  useEffect(() => { micRef.current.setVolume(vol) }, [vol])
   useEffect(() => {
-    micRef.current.setBoost(boost)
-    if (typeof window !== 'undefined') localStorage.setItem('karaoku_boost', boost.toString())
+    try { micRef.current.setVolume(vol) } catch {}
+  }, [vol])
+
+  useEffect(() => {
+    try {
+      micRef.current.setBoost(boost)
+      if (typeof window !== 'undefined') localStorage.setItem('karaoku_boost', boost.toString())
+    } catch {}
   }, [boost])
 
   useEffect(() => {
     return () => {
-      micRef.current.stop()
+      try { micRef.current.stop() } catch {}
       if (tickRef.current) clearInterval(tickRef.current)
       if (saveTimerRef.current) clearInterval(saveTimerRef.current)
-      saveToSupabase(secondsUsed)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60)
-    const s = secs % 60
-    return `${m}:${s.toString().padStart(2, '0')}`
+    const sec = secs % 60
+    return `${m}:${sec.toString().padStart(2, '0')}`
   }
-
-  const micTypeLabel = {
-    bluetooth: '🎙️ Bluetooth',
-    usb: '🔌 USB',
-    wired: '🎧 Wired',
-    builtin: '📱 Phone',
-    default: '📱 Default',
-  }[micType] || '📱 Mic'
-
-  const isPhoneMic = micType === 'builtin' || micType === 'default'
 
   return (
     <div
@@ -215,7 +283,6 @@ export default function MicPanel({
         position: 'relative',
       }}
     >
-      {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: 10, letterSpacing: 2, fontWeight: 800, opacity: 0.85 }}>
@@ -224,9 +291,6 @@ export default function MicPanel({
           <div style={{ fontSize: 18, fontWeight: 800, marginTop: 2 }}>
             {locked ? '🔒 LOCKED' : on ? t.mic_live : t.mic_off}
           </div>
-          <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>
-            {micTypeLabel}{perfMode && on ? ' · PERF' : ''}
-          </div>
           {isHostFree && !locked && (
             <div style={{ fontSize: 10, marginTop: 3, opacity: 0.85, fontFamily: 'monospace' }}>
               ⏱ {formatTime(secondsUsed)} / {formatTime(FREE_MIC_SECONDS)}
@@ -234,7 +298,7 @@ export default function MicPanel({
           )}
           {isHostFree && locked && (
             <div style={{ fontSize: 10, marginTop: 3, opacity: 0.9 }}>
-              Free voice chat limit (10 min)
+              Free voice chat limit reached
             </div>
           )}
         </div>
@@ -261,35 +325,14 @@ export default function MicPanel({
         </button>
       </div>
 
-      {/* Phone mic warning */}
-      {isPhoneMic && !on && !locked && (
-        <div
-          style={{
-            background: 'rgba(251, 191, 36, 0.15)',
-            border: '1px solid rgba(251, 191, 36, 0.3)',
-            borderRadius: 8,
-            padding: 8,
-            marginBottom: 10,
-            fontSize: 10,
-            color: '#fde68a',
-            lineHeight: 1.5,
-          }}
-        >
-          ⚠️ <b>Using phone mic:</b> Use external mic + Bluetooth speaker for best quality.
-        </div>
-      )}
-
-      {/* Time progress */}
       {isHostFree && (
-        <div style={{
-          height: 3, background: 'rgba(255,255,255,0.15)', borderRadius: 100,
-          marginBottom: 10, overflow: 'hidden',
-        }}>
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.15)', borderRadius: 100, marginBottom: 10, overflow: 'hidden' }}>
           <div style={{
             height: '100%',
             width: `${Math.min(100, (secondsUsed / FREE_MIC_SECONDS) * 100)}%`,
             background: locked ? '#ff6b6b' : 'rgba(255,255,255,0.85)',
-            transition: 'width 0.3s', borderRadius: 100,
+            transition: 'width 0.3s',
+            borderRadius: 100,
           }} />
         </div>
       )}
@@ -316,36 +359,30 @@ export default function MicPanel({
         })}
       </div>
 
-      {/* === AUDIO CONTROLS === */}
+      {/* Audio controls */}
       <div style={{
         background: 'rgba(0,0,0,0.25)',
         borderRadius: 10,
         padding: 10,
         marginBottom: 8,
       }}>
-        {/* Music Volume (always visible) */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 10, marginBottom: 4, opacity: 0.9, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-            <span>🎵 Music volume</span>
-            <span>{musicVolume}%</span>
+        {/* Music volume — only show if parent provides control */}
+        {onMusicVolumeChange !== undefined && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, marginBottom: 4, opacity: 0.9, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+              <span>🎵 Music volume</span>
+              <span>{musicVolume}%</span>
+            </div>
+            <input
+              type="range"
+              min="0" max="100" step="1"
+              value={musicVolume}
+              onChange={(e) => handleMusicVolumeChange(+e.target.value)}
+              style={{ width: '100%', accentColor: on ? 'white' : s.red, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
+            />
           </div>
-          <input
-            type="range"
-            min="0" max="100" step="1"
-            value={musicVolume}
-            onChange={(e) => onMusicVolumeChange(+e.target.value)}
-            style={{
-              width: '100%',
-              accentColor: on ? 'white' : s.red,
-              background: 'transparent',
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-            }}
-          />
-        </div>
+        )}
 
-        {/* Mic controls (when on) */}
         {on && (
           <>
             <div style={{ marginBottom: 10 }}>
@@ -379,14 +416,10 @@ export default function MicPanel({
         )}
       </div>
 
-      {/* Advanced toggle — robust click handler */}
+      {/* Advanced toggle — proper button element, robust onClick */}
       <button
         type="button"
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          setShowAdvanced(v => !v)
-        }}
+        onClick={() => setShowAdvanced(!showAdvanced)}
         style={{
           background: 'rgba(0,0,0,0.2)',
           border: '1px solid rgba(255,255,255,0.1)',
@@ -399,13 +432,9 @@ export default function MicPanel({
           textAlign: 'left',
           borderRadius: 8,
           fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
         }}
       >
-        <span style={{ fontSize: 9, opacity: 0.7 }}>{showAdvanced ? '▼' : '▶'}</span>
-        <span>Advanced audio settings</span>
+        {showAdvanced ? '▼' : '▶'} Advanced audio settings
       </button>
 
       {showAdvanced && (
@@ -417,21 +446,14 @@ export default function MicPanel({
           fontSize: 11,
           border: '1px solid rgba(255,255,255,0.08)',
         }}>
-          {/* Performance Mode toggle */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ flex: 1 }}>
               <div style={{ opacity: 0.95, fontWeight: 700 }}>⚡ Performance Mode</div>
-              <div style={{ fontSize: 9, opacity: 0.55, marginTop: 2, lineHeight: 1.4 }}>
-                Raw mic, no browser filters
-              </div>
+              <div style={{ fontSize: 9, opacity: 0.55, marginTop: 2 }}>Raw mic, no browser filters</div>
             </div>
             <button
               type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                togglePerfMode()
-              }}
+              onClick={togglePerfMode}
               style={{
                 background: perfMode ? '#4ade80' : '#555',
                 color: 'white',
@@ -450,7 +472,6 @@ export default function MicPanel({
             </button>
           </div>
 
-          {/* Clear trade-off explainer */}
           <div style={{
             fontSize: 9,
             opacity: 0.75,
@@ -460,18 +481,15 @@ export default function MicPanel({
             borderRadius: 6,
             marginBottom: 6,
           }}>
-            <b style={{ color: '#fbbf24' }}>OFF (default, safer):</b>{' '}
-            Noise filtered, echo cancelled. Music may dip when singing.
-            <br />
-            <br />
-            <b style={{ color: '#4ade80' }}>ON (for pro setup):</b>{' '}
-            Music stays loud. Background noise NOT filtered — only use with external mic + BT speaker.
+            <b style={{ color: '#fbbf24' }}>OFF (default):</b> Browser filters ON — cleaner sound, but music may dip when singing.
+            <br /><br />
+            <b style={{ color: '#4ade80' }}>ON:</b> Raw mic, music stays loud — only use with external mic + BT speaker.
           </div>
 
           {on && (
             <div style={{
               fontSize: 9,
-              opacity: 0.7,
+              opacity: 0.8,
               textAlign: 'center',
               padding: '6px 8px',
               background: 'rgba(251, 191, 36, 0.1)',
@@ -479,13 +497,12 @@ export default function MicPanel({
               borderRadius: 6,
               color: '#fde68a',
             }}>
-              Turn mic OFF to change Performance Mode
+              Turn mic OFF to change mode
             </div>
           )}
         </div>
       )}
 
-      {/* Toast notification */}
       {toast && (
         <div style={{
           position: 'absolute',
