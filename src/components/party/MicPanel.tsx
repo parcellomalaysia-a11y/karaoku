@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { supabase } from '@/lib/supabase/client'
 import { s } from '@/types'
-import { MicManager, detectDeviceType, smartEchoDefault } from '@/lib/mic'
+import { MicManager, detectDeviceType } from '@/lib/mic'
 
 export const FREE_MIC_SECONDS = 600
 
@@ -14,6 +14,8 @@ interface Props {
   partyId?: string
   initialSecondsUsed?: number
   partyLocked: boolean
+  musicVolume: number              // 0-100, controlled by parent (PartyRoom)
+  onMusicVolumeChange: (v: number) => void
   onTimeLimitHit: () => void
   onSecondsUpdate?: (totalSeconds: number) => void
   onNeedUpgrade: () => void
@@ -25,6 +27,8 @@ export default function MicPanel({
   partyId,
   initialSecondsUsed = 0,
   partyLocked,
+  musicVolume,
+  onMusicVolumeChange,
   onTimeLimitHit,
   onSecondsUpdate,
   onNeedUpgrade,
@@ -34,12 +38,11 @@ export default function MicPanel({
   const [on, setOn] = useState(false)
   const [level, setLevel] = useState(0)
   const [vol, setVol] = useState(1)
-  const [boost, setBoost] = useState(1.5) // default slight boost
-  const [karaokeMode, setKaraokeMode] = useState(false) // overrides auto settings
+  const [boost, setBoost] = useState(1.5)
+  const [perfMode, setPerfMode] = useState(true)   // default ON — best quality, no ducking
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [secondsUsed, setSecondsUsed] = useState(initialSecondsUsed)
   const [micType, setMicType] = useState<string>('builtin')
-  const [showFeedbackWarning, setShowFeedbackWarning] = useState(false)
 
   const tickRef = useRef<NodeJS.Timeout | null>(null)
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -49,32 +52,27 @@ export default function MicPanel({
   const timeExceeded = isHostFree && secondsUsed >= FREE_MIC_SECONDS
   const locked = partyLocked || timeExceeded
 
-  // Load saved boost preference
+  // Load saved prefs
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const savedBoost = localStorage.getItem('karaoku_boost')
-    if (savedBoost) setBoost(parseFloat(savedBoost))
-    const savedKaraoke = localStorage.getItem('karaoku_karaoke_mode')
-    if (savedKaraoke) setKaraokeMode(savedKaraoke === 'true')
+    const b = localStorage.getItem('karaoku_boost')
+    if (b) setBoost(parseFloat(b))
+    const p = localStorage.getItem('karaoku_perf_mode')
+    if (p !== null) setPerfMode(p === 'true')
   }, [])
 
   // Detect mic type from saved device
   useEffect(() => {
-    const loadDeviceType = async () => {
+    const load = async () => {
       try {
         const saved = typeof window !== 'undefined' ? localStorage.getItem('karaoku_mic_id') : null
         if (!saved) return
         const devices = await navigator.mediaDevices.enumerateDevices()
         const mic = devices.find((d) => d.deviceId === saved && d.kind === 'audioinput')
-        if (mic) {
-          setMicType(detectDeviceType(mic.label))
-          // Show feedback warning: phone speaker + phone mic combo
-          const type = detectDeviceType(mic.label)
-          setShowFeedbackWarning(type === 'builtin' || type === 'default')
-        }
+        if (mic) setMicType(detectDeviceType(mic.label))
       } catch {}
     }
-    loadDeviceType()
+    load()
   }, [])
 
   useEffect(() => {
@@ -110,25 +108,12 @@ export default function MicPanel({
     try {
       const savedDeviceId = typeof window !== 'undefined' ? localStorage.getItem('karaoku_mic_id') : null
 
-      // Smart echo/noise defaults, OR overridden by karaoke mode
-      let echo: boolean, noise: boolean, autoGain: boolean
-      if (karaokeMode) {
-        // Karaoke mode: turn OFF echo cancellation (user has good setup)
-        // Keep noise suppression, turn OFF auto-gain (we handle with boost)
-        echo = false
-        noise = true
-        autoGain = false
-      } else {
-        // Auto mode: smart per device type
-        echo = smartEchoDefault(micType)
-        noise = typeof window !== 'undefined' ? localStorage.getItem('karaoku_noise') !== 'false' : true
-        autoGain = true
-      }
-
       await micRef.current.start({
-        echo,
-        noise,
-        autoGain,
+        performanceMode: perfMode,
+        // Fallback settings if perf mode is OFF
+        echo: micType === 'bluetooth' || micType === 'builtin',
+        noise: true,
+        autoGain: false,   // always disable — we handle gain via boost
         deviceId: savedDeviceId || undefined,
         boost,
       })
@@ -150,9 +135,9 @@ export default function MicPanel({
       }, 10000)
     } catch (err: any) {
       if (err.name === 'OverconstrainedError') {
-        alert('Selected mic not available. Switch in Settings → Audio Devices.')
+        alert('Selected mic unavailable. Switch in Settings → Audio.')
       } else {
-        alert(t.mic_denied || 'Mic access denied. Please grant permission.')
+        alert(t.mic_denied || 'Mic permission denied. Grant microphone access.')
       }
     }
   }
@@ -169,10 +154,8 @@ export default function MicPanel({
     if (typeof window !== 'undefined') localStorage.setItem('karaoku_boost', boost.toString())
   }, [boost])
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('karaoku_karaoke_mode', karaokeMode.toString())
-    }
-  }, [karaokeMode])
+    if (typeof window !== 'undefined') localStorage.setItem('karaoku_perf_mode', perfMode.toString())
+  }, [perfMode])
 
   useEffect(() => {
     return () => {
@@ -198,6 +181,8 @@ export default function MicPanel({
     default: '📱 Default',
   }[micType] || '📱 Mic'
 
+  const showPhoneWarning = !on && (micType === 'builtin' || micType === 'default')
+
   return (
     <div
       style={{
@@ -217,7 +202,9 @@ export default function MicPanel({
           <div style={{ fontSize: 18, fontWeight: 800, marginTop: 2 }}>
             {locked ? '🔒 LOCKED' : on ? t.mic_live : t.mic_off}
           </div>
-          <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{micTypeLabel}</div>
+          <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>
+            {micTypeLabel}{perfMode && on ? ' · PERF MODE' : ''}
+          </div>
           {isHostFree && !locked && (
             <div style={{ fontSize: 10, marginTop: 3, opacity: 0.85, fontFamily: 'monospace' }}>
               ⏱ {formatTime(secondsUsed)} / {formatTime(FREE_MIC_SECONDS)}
@@ -225,7 +212,7 @@ export default function MicPanel({
           )}
           {isHostFree && locked && (
             <div style={{ fontSize: 10, marginTop: 3, opacity: 0.9 }}>
-              Free mic limit (10 min)
+              Free voice chat limit (10 min)
             </div>
           )}
         </div>
@@ -252,8 +239,8 @@ export default function MicPanel({
         </button>
       </div>
 
-      {/* Feedback warning — only shown when off + phone mic detected */}
-      {!on && showFeedbackWarning && !locked && (
+      {/* Phone-mic warning */}
+      {showPhoneWarning && !locked && (
         <div
           style={{
             background: 'rgba(251, 191, 36, 0.15)',
@@ -266,7 +253,7 @@ export default function MicPanel({
             lineHeight: 1.5,
           }}
         >
-          ⚠️ <b>Phone mic + phone speaker:</b> May cause echo/feedback. For best results, connect Bluetooth speaker via phone Settings, OR use wired headphones.
+          ⚠️ <b>Using phone mic:</b> For louder voice & no music ducking, use external mic + Bluetooth speaker.
         </div>
       )}
 
@@ -286,7 +273,7 @@ export default function MicPanel({
       )}
 
       {/* Level visualizer */}
-      <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 26, marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 26, marginBottom: 12 }}>
         {Array.from({ length: 32 }).map((_, i) => {
           const threshold = (i + 1) / 32
           const active = level > threshold * 0.5
@@ -307,40 +294,73 @@ export default function MicPanel({
         })}
       </div>
 
-      {/* Volume + Boost sliders (when on) */}
-      {on && (
-        <div>
-          <div style={{ fontSize: 10, marginBottom: 4, opacity: 0.85, display: 'flex', justifyContent: 'space-between' }}>
-            <span>🔊 Volume</span>
-            <span>{Math.round(vol * 100)}%</span>
+      {/* === AUDIO CONTROLS === */}
+      <div style={{
+        background: 'rgba(0,0,0,0.25)',
+        borderRadius: 10,
+        padding: 10,
+        marginBottom: 8,
+      }}>
+        {/* Music Volume — always visible (most important for users) */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, marginBottom: 4, opacity: 0.9, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+            <span>🎵 Music volume</span>
+            <span>{musicVolume}%</span>
           </div>
           <input
             type="range"
-            min="0" max="2" step="0.01"
-            value={vol}
-            onChange={(e) => setVol(+e.target.value)}
-            style={{ width: '100%', accentColor: 'white', background: 'transparent', border: 'none', padding: 0, marginBottom: 8 }}
-          />
-
-          <div style={{ fontSize: 10, marginBottom: 4, opacity: 0.85, display: 'flex', justifyContent: 'space-between' }}>
-            <span>⚡ Boost {boost > 2 ? '(high)' : ''}</span>
-            <span>{Math.round(boost * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min="0.5" max="3" step="0.1"
-            value={boost}
-            onChange={(e) => setBoost(+e.target.value)}
-            style={{ width: '100%', accentColor: 'white', background: 'transparent', border: 'none', padding: 0 }}
+            min="0" max="100" step="1"
+            value={musicVolume}
+            onChange={(e) => onMusicVolumeChange(+e.target.value)}
+            style={{
+              width: '100%',
+              accentColor: on ? 'white' : s.red,
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+            }}
           />
         </div>
-      )}
+
+        {/* Mic Volume — only when on */}
+        {on && (
+          <>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, marginBottom: 4, opacity: 0.9, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                <span>🎤 Mic volume</span>
+                <span>{Math.round(vol * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0" max="2" step="0.01"
+                value={vol}
+                onChange={(e) => setVol(+e.target.value)}
+                style={{ width: '100%', accentColor: 'white', background: 'transparent', border: 'none', padding: 0 }}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontSize: 10, marginBottom: 4, opacity: 0.9, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                <span>⚡ Mic boost {boost > 2 ? '(high)' : ''}</span>
+                <span>{Math.round(boost * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.5" max="3" step="0.1"
+                value={boost}
+                onChange={(e) => setBoost(+e.target.value)}
+                style={{ width: '100%', accentColor: 'white', background: 'transparent', border: 'none', padding: 0 }}
+              />
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Advanced toggle */}
       <button
         onClick={() => setShowAdvanced(!showAdvanced)}
         style={{
-          marginTop: 10,
           background: 'transparent',
           border: 'none',
           color: 'rgba(255,255,255,0.6)',
@@ -357,36 +377,57 @@ export default function MicPanel({
 
       {showAdvanced && (
         <div style={{
-          marginTop: 8,
+          marginTop: 6,
           padding: 10,
-          background: 'rgba(0,0,0,0.2)',
+          background: 'rgba(0,0,0,0.3)',
           borderRadius: 8,
           fontSize: 11,
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ opacity: 0.9 }}>🎤 Karaoke mode</span>
+          {/* Performance Mode */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div>
+              <div style={{ opacity: 0.95, fontWeight: 700 }}>⚡ Performance Mode</div>
+              <div style={{ fontSize: 9, opacity: 0.55, marginTop: 2 }}>Disables echo cancel + auto-gain</div>
+            </div>
             <button
-              onClick={() => setKaraokeMode(!karaokeMode)}
+              onClick={() => setPerfMode(!perfMode)}
+              disabled={on}
               style={{
-                background: karaokeMode ? '#4ade80' : '#444',
+                background: perfMode ? '#4ade80' : '#444',
                 color: 'white',
                 border: 'none',
                 borderRadius: 100,
-                padding: '3px 10px',
+                padding: '4px 12px',
                 fontSize: 9,
                 fontWeight: 800,
-                cursor: 'pointer',
+                cursor: on ? 'not-allowed' : 'pointer',
                 letterSpacing: 0.5,
+                opacity: on ? 0.5 : 1,
               }}
             >
-              {karaokeMode ? 'ON' : 'OFF'}
+              {perfMode ? 'ON' : 'OFF'}
             </button>
           </div>
-          <div style={{ fontSize: 9, opacity: 0.6, lineHeight: 1.5 }}>
-            Karaoke mode disables echo cancellation & auto-gain.
-            Use only with <b>external mic</b> (wired or BT), NOT phone built-in.
-            Turn OFF if you get echo/feedback.
+
+          {/* Explainer */}
+          <div style={{
+            fontSize: 9,
+            opacity: 0.7,
+            lineHeight: 1.6,
+            padding: '8px 10px',
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: 6,
+            marginBottom: 6,
+          }}>
+            <b style={{ color: '#4ade80' }}>Perf ON</b> = music stays loud, raw mic (best with external mic).<br />
+            <b style={{ color: '#fbbf24' }}>Perf OFF</b> = browser filters on (may reduce music volume when singing).
           </div>
+
+          {on && (
+            <div style={{ fontSize: 9, opacity: 0.6, textAlign: 'center' }}>
+              Turn mic OFF to change Performance Mode
+            </div>
+          )}
         </div>
       )}
     </div>

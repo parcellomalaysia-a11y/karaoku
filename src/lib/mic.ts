@@ -1,19 +1,19 @@
 // ============================================================
 // MIC MANAGER
 // Enhanced with:
+//  - Performance mode (disables all browser audio processing for max quality)
 //  - Boost gain (up to 3x amplification via GainNode)
-//  - Smart echo/noise defaults per device type (BT vs built-in)
 //  - Device selection (Bluetooth, USB, specific mic)
-//  - Output device selection (where setSinkId supported)
+//  - Auto-detect device type helpers
 // ============================================================
 
 export interface MicStartOpts {
-  echo?: boolean
-  noise?: boolean
-  autoGain?: boolean
-  deviceId?: string
-  boost?: number // 1.0 = normal, up to 3.0 = 300%
-  outputDeviceId?: string // for setSinkId (desktop Chrome only)
+  echo?: boolean           // echo cancellation
+  noise?: boolean          // noise suppression
+  autoGain?: boolean       // browser automatic gain control
+  deviceId?: string        // specific mic device
+  boost?: number           // 1.0 = normal, up to 3.0 = 300%
+  performanceMode?: boolean  // disable ALL processing (best quality, no ducking)
 }
 
 export class MicManager {
@@ -23,20 +23,18 @@ export class MicManager {
   private gain: GainNode | null = null
   private boostGain: GainNode | null = null
   private analyser: AnalyserNode | null = null
-  private destination: MediaStreamAudioDestinationNode | null = null
-  private outputAudio: HTMLAudioElement | null = null
   public active = false
 
   async start(opts: MicStartOpts = {}) {
     if (this.active) return
-    const {
-      echo = true,
-      noise = true,
-      autoGain = true,
-      deviceId,
-      boost = 1.0,
-      outputDeviceId,
-    } = opts
+
+    // Performance mode overrides all individual settings → max quality, raw pass-through
+    const perfMode = opts.performanceMode === true
+
+    const echo = perfMode ? false : (opts.echo ?? true)
+    const noise = perfMode ? false : (opts.noise ?? true)
+    const autoGain = perfMode ? false : (opts.autoGain ?? true)
+    const { deviceId, boost = 1.0 } = opts
 
     const audioConstraints: MediaTrackConstraints = {
       echoCancellation: echo,
@@ -68,47 +66,25 @@ export class MicManager {
     this.gain = this.ctx.createGain()
     this.gain.gain.value = 1.0
 
-    // Boost gain (0.5 to 3.0, for loudness boost on weak mics)
+    // Boost gain (0.5 to 3.0)
     this.boostGain = this.ctx.createGain()
     this.boostGain.gain.value = Math.max(0.5, Math.min(3.0, boost))
 
-    // Analyser for visualizer
+    // Analyser for level visualizer
     this.analyser = this.ctx.createAnalyser()
     this.analyser.fftSize = 64
 
-    // Signal chain: source → gain → boost → analyser → destination
+    // Chain: source → gain → boost → analyser → destination
     this.source.connect(this.gain)
     this.gain.connect(this.boostGain)
     this.boostGain.connect(this.analyser)
-
-    // If output device specified AND setSinkId supported → route via Audio element
-    if (outputDeviceId && typeof (HTMLMediaElement.prototype as any).setSinkId === 'function') {
-      try {
-        this.destination = this.ctx.createMediaStreamDestination()
-        this.boostGain.connect(this.destination)
-        this.outputAudio = new Audio()
-        this.outputAudio.srcObject = this.destination.stream
-        await (this.outputAudio as any).setSinkId(outputDeviceId)
-        await this.outputAudio.play()
-      } catch (err) {
-        console.warn('[mic] setSinkId failed, using default output', err)
-        this.boostGain.connect(this.ctx.destination)
-      }
-    } else {
-      // Default: route to OS default output
-      this.boostGain.connect(this.ctx.destination)
-    }
+    this.boostGain.connect(this.ctx.destination)
 
     this.active = true
   }
 
   stop() {
     if (!this.active) return
-    if (this.outputAudio) {
-      this.outputAudio.pause()
-      this.outputAudio.srcObject = null
-      this.outputAudio = null
-    }
     if (this.stream) this.stream.getTracks().forEach((t) => t.stop())
     if (this.ctx) this.ctx.close()
     this.ctx = null
@@ -117,7 +93,6 @@ export class MicManager {
     this.gain = null
     this.boostGain = null
     this.analyser = null
-    this.destination = null
     this.active = false
   }
 
@@ -137,14 +112,9 @@ export class MicManager {
     for (let i = 0; i < arr.length; i++) sum += arr[i]
     return sum / arr.length / 255
   }
-
-  // Detect if setSinkId is supported (desktop Chrome mainly)
-  static isOutputSelectionSupported(): boolean {
-    return typeof (HTMLMediaElement.prototype as any).setSinkId === 'function'
-  }
 }
 
-// Helper to detect device type from label
+// Helper: detect device type from label
 export function detectDeviceType(label: string): 'bluetooth' | 'usb' | 'wired' | 'builtin' | 'default' {
   const l = label.toLowerCase()
   if (l.includes('bluetooth') || l.includes('airpod') || l.includes('boya') ||
@@ -154,9 +124,4 @@ export function detectDeviceType(label: string): 'bluetooth' | 'usb' | 'wired' |
       l.includes('earbud')) return 'wired'
   if (l.includes('default') || l.includes('communications')) return 'default'
   return 'builtin'
-}
-
-// Smart echo defaults: true for Bluetooth (risk feedback), configurable for others
-export function smartEchoDefault(deviceType: string): boolean {
-  return deviceType === 'bluetooth' || deviceType === 'builtin' || deviceType === 'default'
 }

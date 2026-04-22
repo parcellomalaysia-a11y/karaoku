@@ -37,12 +37,12 @@ export default function PartyRoom({ code }: { code: string }) {
   const [showUpgrade, setShowUpgrade] = useState(false)
 
   const [playing, setPlaying] = useState(true)
+  const [musicVolume, setMusicVolume] = useState(100) // 0-100
 
   const currentPlan = profile?.plan || 'free'
   const planLimits = PLANS[currentPlan]
   const canParty = planLimits.party
 
-  // LOCK LOGIC — EITHER 3 songs played OR 10 min mic used → lock
   const isHostFree = hostPlan === 'free'
   const songLimitHit = isHostFree && playedCount >= FREE_PLAYED_LIMIT
   const micLimitHit = isHostFree && micSecondsUsed >= FREE_MIC_SECONDS
@@ -52,6 +52,20 @@ export default function PartyRoom({ code }: { code: string }) {
     ? (queue.length + (current ? 1 : 0) + playedCount) >= FREE_PLAYED_LIMIT
     : false
   const disableAdd = partyLocked || queueFullForPlan
+
+  // Load saved music volume preference
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const saved = localStorage.getItem('karaoku_music_volume')
+    if (saved) setMusicVolume(parseInt(saved, 10))
+  }, [])
+
+  // Save music volume to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('karaoku_music_volume', musicVolume.toString())
+    }
+  }, [musicVolume])
 
   useEffect(() => {
     let mounted = true
@@ -225,8 +239,8 @@ export default function PartyRoom({ code }: { code: string }) {
   if (notFound) {
     return (
       <div style={{ minHeight: '100vh', background: s.black, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🎤</div>
-        <h1 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Party not found</h1>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Room not found</h1>
         <p style={{ color: '#999', fontSize: 14, marginBottom: 20 }}>Code {code} doesn&apos;t exist.</p>
         <Button variant="primary" onClick={() => router.push('/dashboard')}>← Dashboard</Button>
       </div>
@@ -237,14 +251,13 @@ export default function PartyRoom({ code }: { code: string }) {
     ? (PLANS[currentPlan] as any).labelBm
     : PLANS[currentPlan].label
 
-  // Lock reason messaging
   let lockReason: string | null = null
   if (songLimitHit && micLimitHit) {
-    lockReason = '🔒 Party ended — 3 songs played AND 10 min mic used'
+    lockReason = '🔒 Room ended — track limit and voice chat limit both reached'
   } else if (songLimitHit) {
-    lockReason = '🔒 Party ended — 3 songs played (free limit)'
+    lockReason = '🔒 Room ended — 3 tracks played (free tier limit)'
   } else if (micLimitHit) {
-    lockReason = '🔒 Party ended — 10 min mic time used (free limit)'
+    lockReason = '🔒 Room ended — 10 min voice chat used (free tier limit)'
   }
 
   return (
@@ -338,7 +351,12 @@ export default function PartyRoom({ code }: { code: string }) {
             }}
           >
             {current ? (
-              <YTPlayer videoId={current.video_id} playing={playing} onEnded={handleEnded} />
+              <YTPlayer
+                videoId={current.video_id}
+                playing={playing}
+                volume={musicVolume}
+                onEnded={handleEnded}
+              />
             ) : (
               <div
                 style={{
@@ -352,7 +370,7 @@ export default function PartyRoom({ code }: { code: string }) {
                   color: '#666',
                 }}
               >
-                <div style={{ fontSize: 80 }}>🎤</div>
+                <div style={{ fontSize: 80 }}>🎵</div>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{t.empty_queue_big}</div>
                 <div style={{ fontSize: 13 }}>{t.empty_queue_sub}</div>
               </div>
@@ -383,6 +401,8 @@ export default function PartyRoom({ code }: { code: string }) {
             partyId={party?.id}
             initialSecondsUsed={micSecondsUsed}
             partyLocked={partyLocked}
+            musicVolume={musicVolume}
+            onMusicVolumeChange={setMusicVolume}
             onSecondsUpdate={setMicSecondsUsed}
             onTimeLimitHit={() => setShowUpgrade(true)}
             onNeedUpgrade={() => setShowUpgrade(true)}
@@ -410,7 +430,7 @@ export default function PartyRoom({ code }: { code: string }) {
                 <div style={{ fontSize: 17, fontWeight: 800 }}>{t.songs_count(queue.length)}</div>
                 {isHostFree && (
                   <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
-                    {playedCount}/{FREE_PLAYED_LIMIT} songs · {Math.floor(micSecondsUsed / 60)}:{(micSecondsUsed % 60).toString().padStart(2, '0')}/10:00 mic
+                    {playedCount}/{FREE_PLAYED_LIMIT} tracks · {Math.floor(micSecondsUsed / 60)}:{(micSecondsUsed % 60).toString().padStart(2, '0')}/10:00 voice
                   </div>
                 )}
               </div>

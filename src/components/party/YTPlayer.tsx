@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react'
 interface Props {
   videoId: string
   playing: boolean
+  volume?: number      // 0-100 (YouTube API native range)
   onEnded?: () => void
   onReady?: () => void
 }
@@ -44,7 +45,7 @@ function loadYTApi(): Promise<void> {
   return apiLoadingPromise
 }
 
-export default function YTPlayer({ videoId, playing, onEnded, onReady }: Props) {
+export default function YTPlayer({ videoId, playing, volume = 100, onEnded, onReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<any>(null)
 
@@ -67,6 +68,9 @@ export default function YTPlayer({ videoId, playing, onEnded, onReady }: Props) 
         },
         events: {
           onReady: (e: any) => {
+            try {
+              e.target.setVolume(volume)
+            } catch {}
             if (playing) e.target.playVideo()
             onReady?.()
           },
@@ -87,6 +91,7 @@ export default function YTPlayer({ videoId, playing, onEnded, onReady }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId])
 
+  // Play/pause control
   useEffect(() => {
     if (!playerRef.current) return
     try {
@@ -94,6 +99,14 @@ export default function YTPlayer({ videoId, playing, onEnded, onReady }: Props) 
       else playerRef.current.pauseVideo()
     } catch {}
   }, [playing])
+
+  // Volume control — live update
+  useEffect(() => {
+    if (!playerRef.current) return
+    try {
+      playerRef.current.setVolume(Math.max(0, Math.min(100, volume)))
+    } catch {}
+  }, [volume])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 }
