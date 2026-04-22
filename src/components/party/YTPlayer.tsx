@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react'
 interface Props {
   videoId: string
   playing: boolean
-  volume?: number      // 0-100 (YouTube API native range)
+  volume?: number
   onEnded?: () => void
   onReady?: () => void
 }
@@ -68,9 +68,7 @@ export default function YTPlayer({ videoId, playing, volume = 100, onEnded, onRe
         },
         events: {
           onReady: (e: any) => {
-            try {
-              e.target.setVolume(volume)
-            } catch {}
+            try { e.target.setVolume(volume) } catch {}
             if (playing) e.target.playVideo()
             onReady?.()
           },
@@ -91,7 +89,6 @@ export default function YTPlayer({ videoId, playing, volume = 100, onEnded, onRe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId])
 
-  // Play/pause control
   useEffect(() => {
     if (!playerRef.current) return
     try {
@@ -100,7 +97,6 @@ export default function YTPlayer({ videoId, playing, volume = 100, onEnded, onRe
     } catch {}
   }, [playing])
 
-  // Volume control — live update
   useEffect(() => {
     if (!playerRef.current) return
     try {

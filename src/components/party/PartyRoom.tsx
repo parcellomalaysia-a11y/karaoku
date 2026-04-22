@@ -37,7 +37,7 @@ export default function PartyRoom({ code }: { code: string }) {
   const [showUpgrade, setShowUpgrade] = useState(false)
 
   const [playing, setPlaying] = useState(true)
-  const [musicVolume, setMusicVolume] = useState(100) // 0-100
+  const [musicVolume, setMusicVolume] = useState(100)
 
   const currentPlan = profile?.plan || 'free'
   const planLimits = PLANS[currentPlan]
@@ -53,14 +53,12 @@ export default function PartyRoom({ code }: { code: string }) {
     : false
   const disableAdd = partyLocked || queueFullForPlan
 
-  // Load saved music volume preference
   useEffect(() => {
     if (typeof window === 'undefined') return
     const saved = localStorage.getItem('karaoku_music_volume')
     if (saved) setMusicVolume(parseInt(saved, 10))
   }, [])
 
-  // Save music volume to localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('karaoku_music_volume', musicVolume.toString())

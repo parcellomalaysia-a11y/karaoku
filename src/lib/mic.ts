@@ -1,19 +1,19 @@
 // ============================================================
 // MIC MANAGER
 // Enhanced with:
-//  - Performance mode (disables all browser audio processing for max quality)
+//  - Performance mode (disables all browser audio processing)
 //  - Boost gain (up to 3x amplification via GainNode)
 //  - Device selection (Bluetooth, USB, specific mic)
 //  - Auto-detect device type helpers
 // ============================================================
 
 export interface MicStartOpts {
-  echo?: boolean           // echo cancellation
-  noise?: boolean          // noise suppression
-  autoGain?: boolean       // browser automatic gain control
-  deviceId?: string        // specific mic device
-  boost?: number           // 1.0 = normal, up to 3.0 = 300%
-  performanceMode?: boolean  // disable ALL processing (best quality, no ducking)
+  echo?: boolean
+  noise?: boolean
+  autoGain?: boolean
+  deviceId?: string
+  boost?: number
+  performanceMode?: boolean
 }
 
 export class MicManager {
@@ -28,7 +28,6 @@ export class MicManager {
   async start(opts: MicStartOpts = {}) {
     if (this.active) return
 
-    // Performance mode overrides all individual settings → max quality, raw pass-through
     const perfMode = opts.performanceMode === true
 
     const echo = perfMode ? false : (opts.echo ?? true)
@@ -62,19 +61,15 @@ export class MicManager {
     this.ctx = new AudioContext({ latencyHint: 'interactive' })
     this.source = this.ctx.createMediaStreamSource(this.stream)
 
-    // Normal gain (user-adjustable 0 to 2)
     this.gain = this.ctx.createGain()
     this.gain.gain.value = 1.0
 
-    // Boost gain (0.5 to 3.0)
     this.boostGain = this.ctx.createGain()
     this.boostGain.gain.value = Math.max(0.5, Math.min(3.0, boost))
 
-    // Analyser for level visualizer
     this.analyser = this.ctx.createAnalyser()
     this.analyser.fftSize = 64
 
-    // Chain: source → gain → boost → analyser → destination
     this.source.connect(this.gain)
     this.gain.connect(this.boostGain)
     this.boostGain.connect(this.analyser)
