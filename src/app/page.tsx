@@ -1,13 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Logo from '@/components/ui/Logo'
 import Button from '@/components/ui/Button'
 import LangToggle from '@/components/ui/LangToggle'
 import { useLang } from '@/lib/i18n/LangProvider'
-import { s, PLANS } from '@/types'
+import { s } from '@/types'
 
 export default function LandingPage() {
   const { t, lang } = useLang()
@@ -54,312 +53,286 @@ export default function LandingPage() {
       >
         <div
           style={{
-            position: 'absolute',
-            top: -100,
-            right: -100,
-            width: 400,
-            height: 400,
-            borderRadius: '50%',
-            background: s.red,
-            opacity: 0.15,
-            filter: 'blur(60px)',
+            fontSize: 11,
+            letterSpacing: 3,
+            color: s.redLight,
+            fontWeight: 800,
+            marginBottom: 12,
           }}
-        />
-        <div
+        >
+          {lang === 'bm' ? 'PLATFORM PENGURUSAN SESI' : 'SESSION MANAGEMENT PLATFORM'}
+        </div>
+        <h1
           style={{
-            position: 'absolute',
-            bottom: -150,
-            left: -150,
-            width: 500,
-            height: 500,
-            borderRadius: '50%',
-            background: s.red,
-            opacity: 0.1,
-            filter: 'blur(80px)',
+            fontSize: 'clamp(32px, 5vw, 56px)',
+            fontWeight: 900,
+            lineHeight: 1.05,
+            marginBottom: 14,
+            letterSpacing: -1,
           }}
-        />
-
-        <div style={{ position: 'relative', maxWidth: 900, margin: '0 auto' }}>
-          <div
-            className="anim-slide-up"
-            style={{
-              display: 'inline-block',
-              padding: '6px 14px',
-              background: 'rgba(230,0,18,0.15)',
-              border: `1px solid ${s.red}`,
-              borderRadius: 20,
-              fontSize: 12,
-              color: s.redLight,
-              fontWeight: 700,
-              letterSpacing: 2,
-              marginBottom: 24,
-            }}
-          >
-            🎮 {t.hero_badge}
-          </div>
-          <h1
-            className="anim-slide-up"
-            style={{
-              fontSize: 'clamp(44px, 7vw, 80px)',
-              fontWeight: 900,
-              lineHeight: 1.05,
-              letterSpacing: '-2px',
-              marginBottom: 20,
-              animationDelay: '0.1s',
-            }}
-          >
-            {t.hero_line1}
-            <br />
-            <span style={{ color: s.red }}>{t.hero_line2}</span>
-          </h1>
-          <p
-            className="anim-slide-up"
-            style={{
-              fontSize: 18,
-              color: '#aaa',
-              maxWidth: 560,
-              margin: '0 auto 40px',
-              lineHeight: 1.6,
-              animationDelay: '0.2s',
-            }}
-          >
-            {t.hero_desc}
-          </p>
-          <div
-            className="anim-slide-up"
-            style={{
-              display: 'flex',
-              gap: 16,
-              justifyContent: 'center',
-              flexWrap: 'wrap',
-              animationDelay: '0.3s',
-            }}
-          >
-            <Button variant="primary" size="lg" onClick={() => router.push('/login?next=/dashboard/parties/new')}>
-              🎤 {t.start_party}
-            </Button>
-            <Button variant="ghost" size="lg" onClick={() => router.push('/join')}>
-              📱 {t.join_party}
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURES */}
-      <section style={{ padding: '60px 32px', background: s.dark }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <h2
-            style={{
-              fontSize: 36,
-              fontWeight: 900,
-              textAlign: 'center',
-              marginBottom: 48,
-              letterSpacing: -1,
-            }}
-          >
-            {t.features_title}
-            <span style={{ color: s.red }}>{t.features_title2}</span>
-          </h2>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: 16,
-            }}
-          >
-            {[
-              { icon: '🎵', title: t.feature_queue, desc: t.feature_queue_desc },
-              { icon: '📺', title: t.feature_youtube, desc: t.feature_youtube_desc },
-              { icon: '🎤', title: t.feature_mic, desc: t.feature_mic_desc },
-              { icon: '👥', title: t.feature_party, desc: t.feature_party_desc },
-            ].map((f, i) => (
-              <div
-                key={i}
-                style={{
-                  background: s.gray,
-                  padding: 24,
-                  borderRadius: 16,
-                  border: '1px solid #333',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = s.red
-                  e.currentTarget.style.transform = 'translateY(-4px)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#333'
-                  e.currentTarget.style.transform = 'none'
-                }}
-              >
-                <div style={{ fontSize: 36, marginBottom: 12 }}>{f.icon}</div>
-                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{f.title}</h3>
-                <p style={{ color: '#999', fontSize: 14, lineHeight: 1.5 }}>{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* STEPS */}
-      <section style={{ padding: '60px 32px' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 40 }}>
-            <div style={{ fontSize: 12, color: s.redLight, letterSpacing: 2, fontWeight: 800 }}>
-              {t.steps_badge}
-            </div>
-            <h2 style={{ fontSize: 32, fontWeight: 900, marginTop: 8, letterSpacing: -1 }}>
-              {t.steps_title}
-            </h2>
-          </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: 16,
-            }}
-          >
-            {[
-              { n: 1, title: t.step1, desc: t.step1_desc },
-              { n: 2, title: t.step2, desc: t.step2_desc },
-              { n: 3, title: t.step3, desc: t.step3_desc },
-            ].map((st) => (
-              <div key={st.n} style={{ textAlign: 'center', padding: 24 }}>
-                <div
-                  style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: '50%',
-                    background: s.red,
-                    margin: '0 auto 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 24,
-                    fontWeight: 900,
-                    boxShadow: `0 6px 0 ${s.redDark}`,
-                  }}
-                >
-                  {st.n}
-                </div>
-                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{st.title}</h3>
-                <p style={{ color: '#999', fontSize: 14 }}>{st.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PRICING TEASER */}
-      <section style={{ padding: '60px 32px', background: s.dark }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 32, fontWeight: 900, marginBottom: 8 }}>{t.pricing_title}</h2>
-          <p style={{ color: '#999', fontSize: 15, marginBottom: 32 }}>{t.pricing_sub}</p>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 12,
-              textAlign: 'left',
-              marginBottom: 24,
-            }}
-          >
-            {(['free', 'day', 'month', 'year'] as const).map((pid) => {
-              const p = PLANS[pid]
-              const isPop = pid === 'day'
-              const colors: any = { free: '#888', day: s.red, month: s.purple, year: s.gold }
-              return (
-                <div
-                  key={pid}
-                  style={{
-                    background: s.gray,
-                    borderRadius: 16,
-                    padding: 24,
-                    border: isPop ? `2px solid ${colors[pid]}` : '2px solid transparent',
-                    position: 'relative',
-                  }}
-                >
-                  {isPop && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: -12,
-                        left: 20,
-                        background: colors[pid],
-                        color: 'white',
-                        fontSize: 11,
-                        fontWeight: 800,
-                        padding: '4px 10px',
-                        borderRadius: 20,
-                        letterSpacing: 1,
-                      }}
-                    >
-                      🔥 {t.popular}
-                    </div>
-                  )}
-                  <div style={{ fontSize: 14, color: '#999' }}>
-                    {lang === 'bm' && 'labelBm' in p ? (p as any).labelBm : p.label}
-                  </div>
-                  <div style={{ fontSize: 36, fontWeight: 900, color: colors[pid], margin: '4px 0' }}>
-                    {p.price}
-                  </div>
-                  <div style={{ fontSize: 13, color: '#999', marginBottom: 16 }}>
-                    {lang === 'bm' && 'periodBm' in p ? (p as any).periodBm : p.period}
-                  </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {(lang === 'bm' ? p.featuresBm : p.features).map((f: string, i: number) => (
-                      <li key={i} style={{ fontSize: 13, padding: '4px 0', color: '#ccc' }}>
-                        ✓ {f}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )
-            })}
-          </div>
-          <Link href="/pricing">
+        >
+          {lang === 'bm' ? (
+            <>Barisan gilir.<br />Sesi tersusun.<br /><span style={{ color: s.redLight }}>Secara serentak.</span></>
+          ) : (
+            <>Organize queues.<br />Run sessions.<br /><span style={{ color: s.redLight }}>Together, live.</span></>
+          )}
+        </h1>
+        <p style={{ fontSize: 17, color: '#bbb', maxWidth: 580, margin: '0 auto 28px', lineHeight: 1.5 }}>
+          {lang === 'bm'
+            ? 'Host bilik, peserta scan QR untuk join. Cadang video YouTube, vote queue, sync realtime untuk semua.'
+            : 'Host a room. Guests scan QR to join. Suggest YouTube links, vote on queue, everyone stays in sync.'}
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Link href="/login">
             <Button variant="primary" size="lg">
-              {t.pricing_title} →
+              {lang === 'bm' ? 'Mula Free →' : 'Start Free →'}
             </Button>
           </Link>
+          <Link href="/join">
+            <Button variant="ghost" size="lg">
+              {lang === 'bm' ? 'Join Bilik' : 'Join Room'}
+            </Button>
+          </Link>
+        </div>
+
+        <p style={{ marginTop: 22, fontSize: 11, color: '#666' }}>
+          {lang === 'bm'
+            ? 'No muat turun. Browser sahaja. Peserta perlukan YouTube link.'
+            : 'No download. Works in browser. Participants bring their own YouTube links.'}
+        </p>
+      </section>
+
+      {/* WHAT IT DOES */}
+      <section style={{ padding: '40px 32px', background: s.dark }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          <div style={{ fontSize: 11, color: s.redLight, letterSpacing: 2, fontWeight: 800, marginBottom: 8, textAlign: 'center' }}>
+            {lang === 'bm' ? 'APA YANG PLATFORM INI BUAT' : 'WHAT THIS PLATFORM DOES'}
+          </div>
+          <h2 style={{ fontSize: 28, fontWeight: 900, textAlign: 'center', marginBottom: 36, letterSpacing: -0.5 }}>
+            {lang === 'bm' ? 'Alat koordinasi untuk kumpulan.' : 'A coordination tool for groups.'}
+          </h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+            <FeatureCard
+              label="01"
+              title={lang === 'bm' ? 'Host bilik' : 'Host a room'}
+              desc={lang === 'bm'
+                ? 'Dapat kod unik. Kongsi dengan kumpulan anda.'
+                : 'Get a unique code. Share it with your group.'}
+            />
+            <FeatureCard
+              label="02"
+              title={lang === 'bm' ? 'Peserta join' : 'Guests join'}
+              desc={lang === 'bm'
+                ? 'Scan QR atau enter kod. Tiada sign-up.'
+                : 'Scan QR or enter code. No signup needed.'}
+            />
+            <FeatureCard
+              label="03"
+              title={lang === 'bm' ? 'Cadang video' : 'Suggest videos'}
+              desc={lang === 'bm'
+                ? 'Cari video YouTube. Add ke queue bersama.'
+                : 'Search YouTube videos. Add to the shared queue.'}
+            />
+            <FeatureCard
+              label="04"
+              title={lang === 'bm' ? 'Vote queue' : 'Vote on queue'}
+              desc={lang === 'bm'
+                ? 'Ahli kumpulan vote video mana next.'
+                : 'Members vote which video goes next.'}
+            />
+            <FeatureCard
+              label="05"
+              title={lang === 'bm' ? 'Play sync' : 'Play in sync'}
+              desc={lang === 'bm'
+                ? 'Semua tengok status sama, realtime.'
+                : 'Everyone sees the same current status, live.'}
+            />
+            <FeatureCard
+              label="06"
+              title={lang === 'bm' ? 'Habis sesi' : 'End session'}
+              desc={lang === 'bm'
+                ? 'Tutup bilik atau habis tempoh. Selesai.'
+                : 'Close room or let it expire. Done.'}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* IMPORTANT — WHAT THIS IS NOT */}
+      <section style={{ padding: '40px 32px' }}>
+        <div
+          style={{
+            maxWidth: 780,
+            margin: '0 auto',
+            background: s.dark,
+            borderRadius: 14,
+            padding: 24,
+            border: `1px solid ${s.gray}`,
+          }}
+        >
+          <div style={{ fontSize: 11, color: s.redLight, letterSpacing: 2, fontWeight: 800, marginBottom: 8 }}>
+            {lang === 'bm' ? 'PENTING — APA INI BUKAN' : 'IMPORTANT — WHAT THIS IS NOT'}
+          </div>
+          <h3 style={{ fontSize: 19, fontWeight: 800, marginBottom: 10, letterSpacing: -0.3 }}>
+            {lang === 'bm'
+              ? 'Kami tidak edar, jual, atau lesen muzik.'
+              : 'We do not distribute, sell, or license music.'}
+          </h3>
+          <p style={{ fontSize: 13, color: '#bbb', lineHeight: 1.7, marginBottom: 8 }}>
+            {lang === 'bm'
+              ? 'Karaoku ialah platform pengurusan sesi dan koordinasi barisan gilir sahaja. Semua kandungan video/audio dimainkan melalui pemain benam penyedia pihak ketiga (YouTube) di bawah terma perkhidmatan mereka.'
+              : 'Karaoku is solely a session management and queue coordination platform. All video/audio content is played via third-party streaming providers (YouTube) using their embedded players under their terms of service.'}
+          </p>
+          <p style={{ fontSize: 13, color: '#bbb', lineHeight: 1.7, marginBottom: 0 }}>
+            {lang === 'bm'
+              ? 'Yuran langganan adalah untuk ciri platform (hosting bilik, pengurusan queue, penyelarasan) sahaja — bukan untuk akses muzik.'
+              : 'Subscription fees are for platform features (room hosting, queue management, coordination) only — not for music access.'}
+          </p>
+        </div>
+      </section>
+
+      {/* PRICING PREVIEW */}
+      <section style={{ padding: '40px 32px', background: s.dark }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', textAlign: 'center' }}>
+          <div style={{ fontSize: 11, color: s.redLight, letterSpacing: 2, fontWeight: 800, marginBottom: 8 }}>
+            {lang === 'bm' ? 'HARGA PLATFORM' : 'PLATFORM PRICING'}
+          </div>
+          <h2 style={{ fontSize: 26, fontWeight: 900, marginBottom: 8, letterSpacing: -0.5 }}>
+            {lang === 'bm' ? 'Bayar untuk akses platform.' : 'Pay for platform access.'}
+          </h2>
+          <p style={{ color: '#999', fontSize: 14, marginBottom: 28 }}>
+            {lang === 'bm'
+              ? 'Yuran untuk hosting & pengurusan sesi. Tiada yuran untuk video.'
+              : 'Fees for hosting & session management. No fees for video content.'}
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, maxWidth: 700, margin: '0 auto' }}>
+            <PlanCard tier={lang === 'bm' ? 'Sesi Harian' : 'Day Access'} price="RM9" duration={lang === 'bm' ? '24 jam' : '24 hours'} />
+            <PlanCard tier={lang === 'bm' ? 'Bulanan' : 'Monthly'} price="RM39" duration={lang === 'bm' ? '30 hari' : '30 days'} highlight />
+            <PlanCard tier={lang === 'bm' ? 'Tahunan' : 'Yearly'} price="RM199" duration={lang === 'bm' ? '365 hari' : '365 days'} />
+          </div>
+
+          <div style={{ marginTop: 22 }}>
+            <Link href="/pricing">
+              <Button variant="ghost" size="sm">{lang === 'bm' ? 'Lihat detail harga →' : 'See pricing details →'}</Button>
+            </Link>
+          </div>
         </div>
       </section>
 
       {/* FOOTER */}
       <footer
         style={{
-          padding: '40px 32px',
-          textAlign: 'center',
-          color: '#666',
-          fontSize: 13,
+          padding: '28px 32px 20px',
           borderTop: `1px solid ${s.gray}`,
+          background: '#0a0a0a',
         }}
       >
-        <div style={{ marginBottom: 12 }}>
-          {t.footer} 🇲🇾
+        <div
+          style={{
+            maxWidth: 900,
+            margin: '0 auto',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+            gap: 20,
+          }}
+        >
+          <div style={{ maxWidth: 440 }}>
+            <Logo size={28} />
+            <p style={{ fontSize: 11, color: '#777', marginTop: 8, lineHeight: 1.6 }}>
+              {lang === 'bm'
+                ? 'Platform pengurusan sesi & koordinasi queue untuk kumpulan. Kandungan video dimainkan melalui penyedia pihak ketiga (YouTube).'
+                : 'Session management & queue coordination platform for groups. Video content plays via third-party providers (YouTube).'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12 }}>
+            <Link href="/terms"><span style={{ color: '#aaa', cursor: 'pointer' }}>{lang === 'bm' ? 'Terma' : 'Terms'}</span></Link>
+            <Link href="/privacy"><span style={{ color: '#aaa', cursor: 'pointer' }}>{lang === 'bm' ? 'Privasi' : 'Privacy'}</span></Link>
+            <Link href="/pricing"><span style={{ color: '#aaa', cursor: 'pointer' }}>{lang === 'bm' ? 'Harga' : 'Pricing'}</span></Link>
+            <a href="mailto:support@karaoku.my" style={{ color: '#aaa' }}>Support</a>
+          </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 24 }}>
-          <Link href="/privacy" style={{ color: '#555', textDecoration: 'none', fontSize: 12 }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#E60012')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#555')}
-          >
-            Privacy Policy
-          </Link>
-          <span style={{ color: '#333' }}>|</span>
-          <Link href="/terms" style={{ color: '#555', textDecoration: 'none', fontSize: 12 }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#E60012')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#555')}
-          >
-            Terms of Service
-          </Link>
-          <span style={{ color: '#333' }}>|</span>
-          <a href="mailto:parcellomalaysia@gmail.com" style={{ color: '#555', textDecoration: 'none', fontSize: 12 }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#E60012')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#555')}
-          >
-            Contact
-          </a>
+        <div
+          style={{
+            maxWidth: 900,
+            margin: '20px auto 0',
+            paddingTop: 14,
+            borderTop: `1px solid ${s.gray}`,
+            fontSize: 10,
+            color: '#555',
+            lineHeight: 1.6,
+          }}
+        >
+          © {new Date().getFullYear()} Karaoku. {lang === 'bm'
+            ? 'Karaoku ialah platform pengurusan sesi. Kami tidak edar, jual, atau lesen muzik atau apa-apa kandungan berhak cipta. Pengguna bertanggungjawab terhadap penggunaan kandungan pihak ketiga mengikut undang-undang hak cipta yang berkenaan dan terma perkhidmatan penyedia tersebut.'
+            : 'Karaoku is a session management platform. We do not distribute, sell, or license music or any copyrighted content. Users are responsible for their use of third-party content in accordance with applicable copyright laws and the terms of service of those providers.'}
         </div>
       </footer>
+    </div>
+  )
+}
+
+function FeatureCard({ label, title, desc }: { label: string; title: string; desc: string }) {
+  return (
+    <div
+      style={{
+        background: '#0a0a0a',
+        borderRadius: 12,
+        padding: 18,
+        border: `1px solid ${s.gray}`,
+      }}
+    >
+      <div style={{ fontSize: 10, color: s.redLight, letterSpacing: 2, fontWeight: 800, marginBottom: 6, fontFamily: 'monospace' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4, letterSpacing: -0.2 }}>
+        {title}
+      </div>
+      <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.5 }}>
+        {desc}
+      </div>
+    </div>
+  )
+}
+
+function PlanCard({ tier, price, duration, highlight }: { tier: string; price: string; duration: string; highlight?: boolean }) {
+  return (
+    <div
+      style={{
+        background: highlight ? '#1a0a0d' : '#0a0a0a',
+        borderRadius: 12,
+        padding: '18px 14px',
+        border: highlight ? `2px solid ${s.red}` : `1px solid ${s.gray}`,
+        textAlign: 'left',
+        position: 'relative',
+      }}
+    >
+      {highlight && (
+        <div
+          style={{
+            position: 'absolute',
+            top: -10,
+            left: 14,
+            background: s.red,
+            color: 'white',
+            fontSize: 9,
+            fontWeight: 800,
+            padding: '3px 10px',
+            borderRadius: 100,
+            letterSpacing: 1.2,
+          }}
+        >
+          POPULAR
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: s.redLight, letterSpacing: 2, fontWeight: 800, marginBottom: 6 }}>
+        {tier.toUpperCase()}
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1 }}>{price}</div>
+      <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{duration}</div>
     </div>
   )
 }

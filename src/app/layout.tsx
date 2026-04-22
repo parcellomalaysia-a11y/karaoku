@@ -1,18 +1,18 @@
 import './globals.css'
 import { LangProvider } from '@/lib/i18n/LangProvider'
-import { Metadata, Viewport } from 'next'
+import { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Karaoku — Sing, Party, Win',
-  description: 'Your phone is the microphone. Turn any room into a karaoke party.',
+  title: 'Karaoku — Session Management Platform',
+  description: 'Session management & queue coordination for groups. Host a room, invite guests via QR, coordinate a shared YouTube queue in real time.',
   openGraph: {
-    title: 'Karaoku — Your phone is the microphone',
-    description: 'Turn any room into a karaoke party. Queue songs from YouTube, sing through your phone.',
+    title: 'Karaoku — Session Management Platform',
+    description: 'Host rooms. Coordinate queues. Sync in real time. Groups bring their own YouTube content.',
     type: 'website',
   },
 }
 
-export const viewport: Viewport = {
+export const viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
