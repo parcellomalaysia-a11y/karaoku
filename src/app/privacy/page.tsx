@@ -19,7 +19,7 @@ export default function PrivacyPage() {
 
         <p style={{ color: '#555', fontSize: 13, marginTop: 60, borderTop: '1px solid #222', paddingTop: 24 }}>
           © {new Date().getFullYear()} Karaoku. All rights reserved. Contact:{' '}
-          <a href="mailto:danielnordin53@gmail.com" style={{ color: '#E60012' }}>danielnordin53@gmail.com</a>
+          <a href="mailto:parcellomalaysia@gmail.com" style={{ color: '#E60012' }}>parcellomalaysia@gmail.com</a>
         </p>
       </div>
     </main>
@@ -60,7 +60,7 @@ const sections = [
   {
     title: '7. Your Rights',
     content:
-      'You may request to access, correct, or delete your personal data at any time by emailing us at danielnordin53@gmail.com. We will respond within 14 business days.',
+      'You may request to access, correct, or delete your personal data at any time by emailing us at parcellomalaysia@gmail.com. We will respond within 14 business days.',
   },
   {
     title: '8. Changes to This Policy',
@@ -70,6 +70,6 @@ const sections = [
   {
     title: '9. Contact Us',
     content:
-      'If you have any questions about this Privacy Policy, please contact us at danielnordin53@gmail.com.',
+      'If you have any questions about this Privacy Policy, please contact us at parcellomalaysia@gmail.com.',
   },
 ]

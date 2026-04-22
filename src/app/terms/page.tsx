@@ -19,7 +19,7 @@ export default function TermsPage() {
 
         <p style={{ color: '#555', fontSize: 13, marginTop: 60, borderTop: '1px solid #222', paddingTop: 24 }}>
           © {new Date().getFullYear()} Karaoku. All rights reserved. Contact:{' '}
-          <a href="mailto:danielnordin53@gmail.com" style={{ color: '#E60012' }}>danielnordin53@gmail.com</a>
+          <a href="mailto:parcellomalaysia@gmail.com" style={{ color: '#E60012' }}>parcellomalaysia@gmail.com</a>
         </p>
       </div>
     </main>
@@ -80,6 +80,6 @@ const sections = [
   {
     title: '11. Contact',
     content:
-      'For questions about these Terms, contact us at danielnordin53@gmail.com.',
+      'For questions about these Terms, contact us at parcellomalaysia@gmail.com.',
   },
 ]
