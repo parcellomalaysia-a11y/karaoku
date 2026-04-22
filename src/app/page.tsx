@@ -334,7 +334,31 @@ export default function LandingPage() {
           borderTop: `1px solid ${s.gray}`,
         }}
       >
-        {t.footer} 🇲🇾
+        <div style={{ marginBottom: 12 }}>
+          {t.footer} 🇲🇾
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 24 }}>
+          <Link href="/privacy" style={{ color: '#555', textDecoration: 'none', fontSize: 12 }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#E60012')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#555')}
+          >
+            Privacy Policy
+          </Link>
+          <span style={{ color: '#333' }}>|</span>
+          <Link href="/terms" style={{ color: '#555', textDecoration: 'none', fontSize: 12 }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#E60012')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#555')}
+          >
+            Terms of Service
+          </Link>
+          <span style={{ color: '#333' }}>|</span>
+          <a href="mailto:parcellomalaysia@gmail.com" style={{ color: '#555', textDecoration: 'none', fontSize: 12 }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#E60012')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#555')}
+          >
+            Contact
+          </a>
+        </div>
       </footer>
     </div>
   )
